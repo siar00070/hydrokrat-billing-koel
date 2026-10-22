@@ -2,6 +2,17 @@
 
 Windows desktop billing software for Hydrokrat Ventures: create Quotations, Proforma Invoices, and Tax Invoices, manage customers and products, and export/print documents in the company's letterhead theme.
 
+## Database setup (Supabase)
+
+This app uses its own Supabase project, separate from the KSB app.
+
+1. Create a new Supabase project.
+2. In its SQL Editor, run `db/schema.sql`, then `db/seed_koel_products.sql` (876 KOEL Varuna products from the KFD Varuna catalogue, with model / kW & RPM / flow & head / MOC specs; rates are 0).
+3. Create the login user under Authentication → Users.
+4. Put the project URL and anon key in `src/config.js`.
+
+To regenerate the product seed from a newer catalogue: `pip install pymupdf`, then `python tools/build_koel_products.py "<catalogue>.pdf"`.
+
 ## Running in development
 
 ```
