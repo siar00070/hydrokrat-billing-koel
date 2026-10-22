@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>HV Billing KOEL</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="login-screen" class="login-screen">
+  <div class="login-box">
+    <div class="login-brand">
+      <img id="login-logo" class="brand-logo" alt="Hydrokrat Ventures">
+      <small>Billing Software &middot; KOEL</small>
+    </div>
+    <div class="field">
+      <label>Email</label>
+      <input type="email" id="login-email" autocomplete="username">
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <div style="display:flex;gap:8px">
+        <input type="password" id="login-password" autocomplete="current-password" style="flex:1">
+        <button type="button" id="login-show-password" class="btn secondary small" style="flex-shrink:0">Show</button>
+      </div>
+    </div>
+    <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:#4b5563;margin:2px 0 14px 0;cursor:pointer">
+      <input type="checkbox" id="login-remember" style="width:auto;margin:0">
+      Remember me on this device
+    </label>
+    <div id="login-error" class="login-error" hidden></div>
+    <button class="btn" id="login-submit" style="width:100%">Log In</button>
+    <div class="login-hint">Contact your administrator if you don't have a login.</div>
+  </div>
+</div>
+
+<div id="app-shell" hidden>
+  <div id="sidebar">
+    <div class="brand">
+      <img id="sidebar-logo" class="brand-logo" alt="Hydrokrat Ventures">
+      <small>Billing Software &middot; KOEL</small>
+    </div>
+    <div class="nav-btn" data-route="dashboard">🏠 Dashboard</div>
+    <div class="nav-btn" data-route="documents">📄 Documents</div>
+    <div class="nav-btn" data-route="customers">👥 Customers</div>
+    <div class="nav-btn" data-route="suppliers">🏭 Suppliers</div>
+    <div class="nav-btn" data-route="products">📦 Products / Items</div>
+    <div class="nav-btn" data-route="settings">⚙️ Settings</div>
+    <div id="session-info" class="session-info"></div>
+  </div>
+  <div id="content"></div>
+</div>
+
+<script src="js/states.js"></script>
+<script src="js/numberToWords.js"></script>
+<script src="js/logoData.js"></script>
+<script src="js/brandLogo.js"></script>
+<script>
+  document.getElementById('login-logo').src = HV_LOGO_DATA_URI;
+  document.getElementById('sidebar-logo').src = HV_LOGO_DATA_URI;
+</script>
+<script src="js/ocr.js"></script>
+<script src="js/documentTemplate.js"></script>
+<script src="js/dashboard.js"></script>
+<script src="js/documentsList.js"></script>
+<script src="js/documentEditor.js"></script>
+<script src="js/customers.js"></script>
+<script src="js/suppliers.js"></script>
+<script src="js/products.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/login.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

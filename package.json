@@ -1,0 +1,55 @@
+{
+  "name": "hv-billing-koel",
+  "productName": "HV Billing KOEL",
+  "version": "1.0.0",
+  "description": "Hydrokrat Ventures (KOEL) - Quotation, Proforma Invoice & Tax Invoice billing software",
+  "main": "main.js",
+  "author": "Hydrokrat Ventures",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "publish": "electron-builder --publish always"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "electron-updater": "^6.8.9",
+    "exceljs": "^4.4.0",
+    "tesseract.js": "^7.0.0",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.hydrokratventures.billing.koel",
+    "productName": "HV Billing KOEL",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "db/**/*",
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "siar00070",
+      "repo": "hydrokrat-billing-koel",
+      "releaseType": "release"
+    }
+  }
+}
