@@ -365,6 +365,7 @@ function buildPurchaseOrderHtml(doc, settings, cssText) {
     <div class="doc-title-box">
       <div class="doc-title">PURCHASE ORDER</div>
       <div class="doc-number-pill">${esc(doc.doc_number)}</div>
+      ${typeof BRAND_LOGO_DATA_URI !== 'undefined' && BRAND_LOGO_DATA_URI ? `<img src="${BRAND_LOGO_DATA_URI}" class="brand-mfr-logo" alt="KOEL">` : ''}
     </div>
   </div>
 
