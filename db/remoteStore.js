@@ -1,6 +1,9 @@
-const PREFIXES = { quotation: 'QT-HVK', proforma: 'PI-HVK', tax_invoice: 'TI-HVK', delivery_challan: 'DC-HVK', purchase_order: 'PO-HVK', techno_commercial: 'TCO-HVK' };
+// Same prefixes as the KSB app: both apps share one numbering series (see numberingClient).
+const PREFIXES = { quotation: 'QT-HV', proforma: 'PI-HV', tax_invoice: 'TI-HV', delivery_challan: 'DC-HV', purchase_order: 'PO-HV', techno_commercial: 'TCO-HV' };
 
-function createRemoteStore(client) {
+// numberingClient: the Supabase client whose `counters` table issues document
+// numbers (the KSB project), so KSB and KOEL documents share one series.
+function createRemoteStore(client, numberingClient = client) {
   async function currentUserId() {
     const { data } = await client.auth.getSession();
     return data.session ? data.session.user.id : null;
@@ -23,9 +26,9 @@ function createRemoteStore(client) {
     const seq = parseInt(parts[parts.length - 1], 10);
     const year = parseInt(parts[parts.length - 2], 10);
     if (!seq || !year) return;
-    const { data } = await client.from('counters').select('last_seq').eq('doc_type', docType).eq('year', year).maybeSingle();
+    const { data } = await numberingClient.from('counters').select('last_seq').eq('doc_type', docType).eq('year', year).maybeSingle();
     if (data && data.last_seq === seq) {
-      await client.from('counters').update({ last_seq: seq - 1 }).eq('doc_type', docType).eq('year', year);
+      await numberingClient.from('counters').update({ last_seq: seq - 1 }).eq('doc_type', docType).eq('year', year);
     }
   }
 
@@ -153,12 +156,12 @@ function createRemoteStore(client) {
       return { ...doc, items };
     },
     async peekNextDocNumber(docType, year) {
-      const { data } = await client.from('counters').select('last_seq').eq('doc_type', docType).eq('year', year).maybeSingle();
+      const { data } = await numberingClient.from('counters').select('last_seq').eq('doc_type', docType).eq('year', year).maybeSingle();
       const seq = (data ? data.last_seq : 0) + 1;
       return formatDocNumber(docType, year, seq);
     },
     async nextDocNumber(docType, year) {
-      const { data, error } = await client.rpc('next_doc_number', { p_doc_type: docType, p_year: year });
+      const { data, error } = await numberingClient.rpc('next_doc_number', { p_doc_type: docType, p_year: year });
       if (error) throw new Error(error.message);
       return formatDocNumber(docType, year, data);
     },

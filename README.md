@@ -33,7 +33,7 @@ This produces an NSIS installer under `dist/`. Before building, replace `assets/
 ## Features
 
 - **Dashboard** — quick-create buttons for each document type, recent documents.
-- **Documents** — Quotation / Proforma Invoice / Tax Invoice, each with independent auto-numbering (`QT-HVK-2026-001`, `PI-HVK-2026-001`, `TI-HVK-2026-001`), search/filter, duplicate-as-another-type, print, and Save as PDF.
+- **Documents** — Quotation / Proforma Invoice / Tax Invoice, numbered in one running series shared with the KSB app (`QT-HV-2026-001`, `PI-HV-2026-001`, `TI-HV-2026-001`; numbers come from the KSB project's counters, so log in with the same email and password as KSB), search/filter, duplicate-as-another-type, print, and Save as PDF.
 - **Customers & Products** — reusable master lists, add/edit/delete, searchable, used when building a document.
 - **Settings** — company details, bank details, and default Terms & Conditions per document type (pre-filled with Hydrokrat Ventures' details).
 - **GST logic** — automatically splits into CGST+SGST when the customer's state matches the company's state (Tamil Nadu), otherwise applies IGST.

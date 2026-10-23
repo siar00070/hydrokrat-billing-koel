@@ -39,7 +39,7 @@ function createWindow() {
 
 app.whenReady().then(async () => {
   supabaseCtx = createSupabaseContext(app.getPath('userData'), safeStorage);
-  store = createRemoteStore(supabaseCtx.client);
+  store = createRemoteStore(supabaseCtx.client, supabaseCtx.numberingClient);
   localConfig = createLocalConfig(app.getPath('userData'));
   registerIpc();
   await supabaseCtx.restoreSession();
