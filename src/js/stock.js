@@ -14,7 +14,7 @@ function productLabel(p) {
 async function renderStock(root) {
   root.appendChild(el('h1', { class: 'page-title' }, ['Stock']));
 
-  const tabs = [['instock', 'In Stock'], ['serials', 'All Serial Nos'], ['invoices', 'Purchase Invoices']];
+  const tabs = [['instock', 'Inventory'], ['serials', 'All Serial Nos'], ['invoices', 'Purchase Invoices']];
   let active = 'instock';
   const tabRow = el('div', { class: 'btn-row', style: 'margin-bottom:14px' });
   const searchRow = el('div', { class: 'search-row' });
@@ -245,8 +245,67 @@ async function openPurchaseInvoiceModal(opts, onSaved) {
     }
   } }, ['Save & Add to Stock']);
 
+  // Supplier's invoice PDF -> fill the form; the user checks it before saving.
+  const pdfNote = el('div', { style: 'font-size:12px;margin:-4px 0 12px' });
+  const pdfInput = el('input', { type: 'file', accept: 'application/pdf,.pdf', style: 'display:none' });
+  const pdfBtn = el('span', { class: 'btn small', onclick: () => pdfInput.click() }, ['📄 Upload Invoice PDF']);
+  pdfInput.addEventListener('change', async () => {
+    const file = pdfInput.files[0];
+    pdfInput.value = '';
+    if (!file) return;
+    pdfBtn.textContent = 'Reading PDF...';
+    pdfNote.innerHTML = '';
+    try {
+      const draft = await window.api.stock.parseInvoicePdf(new Uint8Array(await file.arrayBuffer()));
+      if (!draft.lines.length) throw new Error('No items found in this PDF. Please enter the invoice by hand.');
+      invoiceNoInput.value = draft.invoice_no || '';
+      if (draft.invoice_date) invoiceDateInput.value = draft.invoice_date;
+      if (!poSelect.value && draft.po_number) {
+        const po = pos.find(p => p.doc_number.toUpperCase() === draft.po_number.toUpperCase());
+        if (po) poSelect.value = String(po.id);
+      }
+      let supplierMsg = null;
+      if (draft.supplier_id) supplierSelect.value = String(draft.supplier_id);
+      else if (draft.supplier_name) {
+        supplierMsg = el('div', { style: 'color:#b45309' }, [
+          `Supplier "${draft.supplier_name}" is not in your Suppliers list. `,
+          el('span', { class: 'btn small secondary', onclick: async (e) => {
+            const s = await window.api.suppliers.create({ name: draft.supplier_name, gstin: draft.supplier_gstin });
+            supplierSelect.appendChild(el('option', { value: s.id }, [s.name]));
+            supplierSelect.value = String(s.id);
+            e.target.closest('div').remove();
+            showToast('Supplier added');
+          } }, ['+ Add as supplier'])
+        ]);
+      }
+      lines = draft.lines.map(l => ({
+        product_id: l.product_id, description: l.product_description || l.description,
+        hsn_sac: l.hsn_sac, qty: l.qty, rate: l.rate, serialsText: l.serials.join('\n')
+      }));
+      drawLines();
+      const units = draft.lines.reduce((n, l) => n + l.serials.length, 0);
+      const unmatched = draft.lines.filter(l => !l.product_id);
+      const short = draft.lines.filter(l => l.serials.length !== l.qty);
+      pdfNote.appendChild(el('div', { style: 'color:#15803d;font-weight:600' }, [
+        `Read ${file.name}: ${draft.lines.length} item(s), ${units} serial no(s). Check the details, then Save.`]));
+      if (supplierMsg) pdfNote.appendChild(supplierMsg);
+      if (unmatched.length) pdfNote.appendChild(el('div', { style: 'color:#b45309' }, [
+        `Not matched to a product (kept as typed on the invoice): ${unmatched.map(l => l.description).join('; ')}`]));
+      if (short.length) pdfNote.appendChild(el('div', { style: 'color:#c0392b' }, [
+        `Serial count differs from qty for: ${short.map(l => l.description).join('; ')}`]));
+    } catch (err) {
+      pdfNote.appendChild(el('div', { style: 'color:#c0392b' }, [
+        String(err.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '')]));
+    } finally {
+      pdfBtn.textContent = '📄 Upload Invoice PDF';
+    }
+  });
+
   const box = el('div', { class: 'modal-box', style: 'width:920px;max-width:95vw' }, [
-    el('h3', {}, ['Add Purchase Invoice (Goods Received)']),
+    el('div', { style: 'display:flex;justify-content:space-between;align-items:center' }, [
+      el('h3', {}, ['Add Purchase Invoice (Goods Received)']), el('div', {}, [pdfBtn, pdfInput])
+    ]),
+    pdfNote,
     datalist,
     el('div', { class: 'field-row' }, [
       el('div', { class: 'field' }, [el('label', {}, ['Against Purchase Order']), poSelect]),

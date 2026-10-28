@@ -37,7 +37,8 @@ contextBridge.exposeInMainWorld('api', {
     listUnits: (search) => ipcRenderer.invoke('stock:list_units', search),
     listPurchaseInvoices: () => ipcRenderer.invoke('stock:list_purchase_invoices'),
     createPurchaseInvoice: (inv) => ipcRenderer.invoke('stock:create_purchase_invoice', inv),
-    deletePurchaseInvoice: (id) => ipcRenderer.invoke('stock:delete_purchase_invoice', id)
+    deletePurchaseInvoice: (id) => ipcRenderer.invoke('stock:delete_purchase_invoice', id),
+    parseInvoicePdf: (bytes) => ipcRenderer.invoke('stock:parse_invoice_pdf', bytes)
   },
   documents: {
     list: (filters) => ipcRenderer.invoke('documents:list', filters),

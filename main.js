@@ -4,6 +4,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { createSupabaseContext } = require('./db/supabaseClient');
 const { createRemoteStore, normalizeSerial, STOCK_OUT_TYPES } = require('./db/remoteStore');
+const { extractPdfText, parseInvoiceText, matchProduct } = require('./db/invoicePdf');
 const { computeTotals } = require('./db/logic');
 const { createWorker } = require('tesseract.js');
 const { createLocalConfig } = require('./db/localConfig');
@@ -113,6 +114,26 @@ function registerIpc() {
   ipcMain.handle('stock:list_purchase_invoices', () => store.listPurchaseInvoices());
   ipcMain.handle('stock:create_purchase_invoice', (e, inv) => store.createPurchaseInvoice(inv));
   ipcMain.handle('stock:delete_purchase_invoice', (e, id) => store.deletePurchaseInvoice(id));
+  // Supplier invoice PDF -> purchase invoice draft (lines matched to Products, supplier matched by GSTIN/name).
+  ipcMain.handle('stock:parse_invoice_pdf', async (e, bytes) => {
+    const text = await extractPdfText(bytes);
+    if (text.replace(/s/g, '').length < 50) {
+      throw new Error('No text found in this PDF (it looks like a scanned image). Please enter the invoice by hand.');
+    }
+    const draft = parseInvoiceText(text);
+    const [products, suppliers] = await Promise.all([store.listProducts(), store.listSuppliers()]);
+    const norm = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const supplier = suppliers.find(s => draft.supplier_gstin && norm(s.gstin) === norm(draft.supplier_gstin)) ||
+      suppliers.find(s => draft.supplier_name && norm(s.name) === norm(draft.supplier_name));
+    return {
+      ...draft,
+      supplier_id: supplier ? supplier.id : null,
+      lines: draft.lines.map(l => {
+        const p = matchProduct(l.description, products);
+        return { ...l, product_id: p ? p.id : null, product_description: p ? p.description : null };
+      })
+    };
+  });
 
   ipcMain.handle('documents:list', (e, filters) => store.listDocuments(filters));
   ipcMain.handle('documents:get', (e, id) => store.getDocument(id));

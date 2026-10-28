@@ -16,6 +16,7 @@
     "@supabase/supabase-js": "^2.45.0",
     "electron-updater": "^6.8.9",
     "exceljs": "^4.4.0",
+    "pdfjs-dist": "^3.11.174",
     "tesseract.js": "^7.0.0",
     "ws": "^8.21.3"
   },
