@@ -33,6 +33,12 @@ contextBridge.exposeInMainWorld('api', {
     update: (id, p) => ipcRenderer.invoke('products:update', id, p),
     delete: (id) => ipcRenderer.invoke('products:delete', id)
   },
+  stock: {
+    listUnits: (search) => ipcRenderer.invoke('stock:list_units', search),
+    listPurchaseInvoices: () => ipcRenderer.invoke('stock:list_purchase_invoices'),
+    createPurchaseInvoice: (inv) => ipcRenderer.invoke('stock:create_purchase_invoice', inv),
+    deletePurchaseInvoice: (id) => ipcRenderer.invoke('stock:delete_purchase_invoice', id)
+  },
   documents: {
     list: (filters) => ipcRenderer.invoke('documents:list', filters),
     get: (id) => ipcRenderer.invoke('documents:get', id),

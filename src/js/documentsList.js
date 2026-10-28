@@ -252,6 +252,17 @@ async function renderDocumentsList(root) {
         navigate('document-editor', { docId: created.id });
       } }, [`→ Convert to ${nextStageLabel[nextStage]}`]));
     }
+    if (d.doc_type === 'purchase_order') {
+      actions.push(el('span', { class: 'btn small', onclick: () => openPurchaseInvoiceModal({ poId: d.id }) }, ['📥 Receive Goods']));
+    }
+    if (d.doc_type === 'delivery_challan') {
+      // The invoice for this delivery keeps the challan's serial numbers (stock is not deducted twice).
+      actions.push(el('span', { class: 'btn small', onclick: async () => {
+        const created = await window.api.documents.duplicateAs(d.id, 'tax_invoice');
+        showToast(`Created ${created.doc_number}`);
+        navigate('document-editor', { docId: created.id });
+      } }, ['→ Convert to Tax Invoice']));
+    }
     if (d.doc_type === 'quotation' || d.doc_type === 'proforma') {
       actions.push(el('span', { class: 'btn small secondary', onclick: async () => {
         const created = await window.api.documents.duplicateAs(d.id, 'techno_commercial');

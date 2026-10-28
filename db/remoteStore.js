@@ -3,6 +3,13 @@ const PREFIXES = { quotation: 'QT-HV', proforma: 'PI-HV', tax_invoice: 'TI-HV', 
 
 // numberingClient: the Supabase client whose `counters` table issues document
 // numbers (the KSB project), so KSB and KOEL documents share one series.
+// Documents that take serial-numbered units out of stock.
+const STOCK_OUT_TYPES = ['tax_invoice', 'delivery_challan'];
+
+function normalizeSerial(s) {
+  return String(s || '').trim().replace(/s+/g, ' ').toUpperCase();
+}
+
 function createRemoteStore(client, numberingClient = client) {
   async function currentUserId() {
     const { data } = await client.auth.getSession();
@@ -211,23 +218,109 @@ function createRemoteStore(client, numberingClient = client) {
         .update({ deleted_at: new Date().toISOString(), updated_by: uid })
         .eq('id', id));
       await rollBackCounterIfLatest(doc.doc_type, doc.doc_number);
+      if (STOCK_OUT_TYPES.includes(doc.doc_type)) await this.syncDocumentStock(id, doc.doc_type, [], false);
       return true;
     },
     async restoreDocument(id) {
       const uid = await currentUserId();
-      const doc = unwrap(await client.from('documents').select('doc_number').eq('id', id).single());
+      const doc = unwrap(await client.from('documents').select('doc_number, doc_type').eq('id', id).single());
       const clashes = unwrap(await client.from('documents')
         .select('id').eq('doc_number', doc.doc_number).is('deleted_at', null).neq('id', id));
       if (clashes.length > 0) {
         throw new Error(`Cannot restore — ${doc.doc_number} has already been reused by a newer document. Use "Duplicate As" to recreate this one under a new number instead.`);
       }
+      const isStockOut = STOCK_OUT_TYPES.includes(doc.doc_type);
+      const serials = isStockOut ? await this.documentSerials(id) : [];
+      if (serials.length > 0) {
+        const problem = await this.syncDocumentStock(id, doc.doc_type, serials, true);
+        if (problem) throw new Error(`Cannot restore ${doc.doc_number} — ${problem}`);
+      }
       unwrap(await client.from('documents')
         .update({ deleted_at: null, updated_by: uid })
         .eq('id', id));
+      if (serials.length > 0) await this.syncDocumentStock(id, doc.doc_type, serials, false);
       return true;
     },
     async purgeDocument(id) {
       unwrap(await client.from('documents').delete().eq('id', id));
+      return true;
+    },
+
+    // ---- Stock ----
+    // Returns null when OK, otherwise a message naming the serials that can't be used (see sync_document_stock).
+    async syncDocumentStock(docId, docType, serials, dryRun) {
+      const { data, error } = await client.rpc('sync_document_stock', {
+        p_doc_id: docId, p_doc_type: docType, p_serials: serials, p_dry_run: !!dryRun
+      });
+      if (error) throw new Error(error.message);
+      return data || null;
+    },
+    async documentSerials(docId) {
+      const rows = unwrap(await client.from('document_items').select('serial_nos').eq('document_id', docId));
+      return [...new Set(rows.flatMap(r => r.serial_nos || []))];
+    },
+    async listStockUnits(search) {
+      let q = client.from('stock_units')
+        .select('*, purchase_invoices(invoice_no, invoice_date, supplier_snapshot, po_number), documents(id, doc_number, doc_type)')
+        .order('description').order('serial_no');
+      if (search) q = q.or(`serial_no.ilike.%${search}%,description.ilike.%${search}%`);
+      return unwrap(await q);
+    },
+    async listPurchaseInvoices() {
+      const rows = unwrap(await client.from('purchase_invoices')
+        .select('*, stock_units(id, out_document_id)')
+        .order('invoice_date', { ascending: false }).order('id', { ascending: false }));
+      return rows.map(({ stock_units: units, ...inv }) => ({
+        ...inv,
+        supplier_name: inv.supplier_snapshot ? inv.supplier_snapshot.name : null,
+        unit_count: units.length,
+        in_stock_count: units.filter(u => !u.out_document_id).length
+      }));
+    },
+    // inv: { supplier_id, po_document_id, invoice_no, invoice_date, notes,
+    //        lines: [{ product_id, description, hsn_sac, rate, serials: [] }] } — one serial per unit.
+    async createPurchaseInvoice(inv) {
+      const uid = await currentUserId();
+      const lines = (inv.lines || []).map(l => ({ ...l, serials: (l.serials || []).map(normalizeSerial).filter(Boolean) }));
+      const all = lines.flatMap(l => l.serials);
+      if (!inv.invoice_no || !inv.invoice_date) throw new Error('Invoice number and date are required');
+      if (all.length === 0) throw new Error('Add at least one serial number');
+      const dupes = all.filter((s, i) => all.indexOf(s) !== i);
+      if (dupes.length) throw new Error(`Serial entered twice: ${[...new Set(dupes)].join(', ')}`);
+      const existing = [];
+      for (let i = 0; i < all.length; i += 200) {
+        const rows = unwrap(await client.from('stock_units').select('serial_no').in('serial_no', all.slice(i, i + 200)));
+        existing.push(...rows.map(r => r.serial_no));
+      }
+      if (existing.length) throw new Error(`Already in the system: ${existing.join(', ')}`);
+
+      const supplier = inv.supplier_id
+        ? unwrap(await client.from('suppliers').select('*').eq('id', inv.supplier_id).maybeSingle()) : null;
+      const po = inv.po_document_id
+        ? unwrap(await client.from('documents').select('doc_number').eq('id', inv.po_document_id).maybeSingle()) : null;
+      const header = unwrap(await client.from('purchase_invoices').insert({
+        supplier_id: inv.supplier_id || null, supplier_snapshot: supplier || null,
+        po_document_id: inv.po_document_id || null, po_number: po ? po.doc_number : null,
+        invoice_no: String(inv.invoice_no).trim(), invoice_date: inv.invoice_date,
+        notes: inv.notes || null, created_by: uid
+      }).select().single());
+      const units = lines.flatMap(l => l.serials.map(serial => ({
+        purchase_invoice_id: header.id, product_id: l.product_id || null,
+        description: l.description, hsn_sac: l.hsn_sac || null, serial_no: serial,
+        purchase_rate: Number(l.rate) || 0, created_by: uid
+      })));
+      try {
+        unwrap(await client.from('stock_units').insert(units));
+      } catch (err) {
+        await client.from('purchase_invoices').delete().eq('id', header.id);
+        throw err;
+      }
+      return { ...header, unit_count: units.length };
+    },
+    async deletePurchaseInvoice(id) {
+      const used = unwrap(await client.from('stock_units').select('serial_no').eq('purchase_invoice_id', id).not('out_document_id', 'is', null));
+      if (used.length) throw new Error(`Cannot delete — already sold/delivered: ${used.map(u => u.serial_no).join(', ')}`);
+      unwrap(await client.from('purchase_invoices').delete().eq('id', id));
       return true;
     },
     async setPaymentStatus(id, status, details) {
@@ -351,4 +444,4 @@ function normalizeProduct(p) {
   };
 }
 
-module.exports = { createRemoteStore };
+module.exports = { createRemoteStore, normalizeSerial, STOCK_OUT_TYPES };

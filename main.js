@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { createSupabaseContext } = require('./db/supabaseClient');
-const { createRemoteStore } = require('./db/remoteStore');
+const { createRemoteStore, normalizeSerial, STOCK_OUT_TYPES } = require('./db/remoteStore');
 const { computeTotals } = require('./db/logic');
 const { createWorker } = require('tesseract.js');
 const { createLocalConfig } = require('./db/localConfig');
@@ -108,6 +108,12 @@ function registerIpc() {
   ipcMain.handle('products:delete', (e, id) => store.deleteProduct(id));
 
   // Documents
+  // Stock
+  ipcMain.handle('stock:list_units', (e, search) => store.listStockUnits(search));
+  ipcMain.handle('stock:list_purchase_invoices', () => store.listPurchaseInvoices());
+  ipcMain.handle('stock:create_purchase_invoice', (e, inv) => store.createPurchaseInvoice(inv));
+  ipcMain.handle('stock:delete_purchase_invoice', (e, id) => store.deletePurchaseInvoice(id));
+
   ipcMain.handle('documents:list', (e, filters) => store.listDocuments(filters));
   ipcMain.handle('documents:get', (e, id) => store.getDocument(id));
   ipcMain.handle('documents:preview_number', (e, docType) => {
@@ -147,7 +153,8 @@ function registerIpc() {
         spec_kw_rpm: it.spec_kw_rpm, spec_moc: it.spec_moc,
         use_engine_spec: it.use_engine_spec, spec_engine: it.spec_engine,
         use_engine_accessories: it.use_engine_accessories, spec_engine_accessories: it.spec_engine_accessories,
-        use_accessories: it.use_accessories, spec_accessories: it.spec_accessories
+        use_accessories: it.use_accessories, spec_accessories: it.spec_accessories,
+        serial_nos: (original.doc_type === 'delivery_challan' && newDocType === 'tax_invoice') ? (it.serial_nos || null) : null
       }))
     };
     return saveDocument(payload, null);
@@ -419,6 +426,7 @@ async function saveDocument(payload, existingId) {
   const supplier = isPurchaseOrder && payload.supplier_id ? await store.getSupplier(payload.supplier_id) : null;
   const partyState = payload.place_of_supply || (isPurchaseOrder ? (supplier ? supplier.state : '') : (customer ? customer.state : ''));
 
+  const takesStock = STOCK_OUT_TYPES.includes(payload.doc_type);
   const items = payload.items.map((it, idx) => ({
     product_id: it.product_id || null,
     description: it.description,
@@ -449,8 +457,23 @@ async function saveDocument(payload, existingId) {
     item_acc_discount_pct: it.use_acc_pricing_calc ? (it.item_acc_discount_pct ?? null) : null,
     item_eng_acc_lp: it.use_acc_pricing_calc ? (it.item_eng_acc_lp ?? null) : null,
     item_eng_acc_discount_pct: it.use_acc_pricing_calc ? (it.item_eng_acc_discount_pct ?? null) : null,
+    serial_nos: takesStock && Array.isArray(it.serial_nos) && it.serial_nos.length
+      ? [...new Set(it.serial_nos.map(normalizeSerial).filter(Boolean))] : null,
     sort_order: idx
   }));
+
+  // Stock: every serial on a TI / DC must exist and be free (or belong to this document) before saving.
+  const serials = items.flatMap(it => it.serial_nos || []);
+  if (takesStock) {
+    const dupes = serials.filter((x, i) => serials.indexOf(x) !== i);
+    if (dupes.length) throw new Error(`Serial used twice on this document: ${[...new Set(dupes)].join(', ')}`);
+    const mismatch = items.find(it => it.serial_nos && it.serial_nos.length !== it.qty);
+    if (mismatch) throw new Error(`"${String(mismatch.description).split('\n')[0]}": qty is ${mismatch.qty} but ${mismatch.serial_nos.length} serial no(s) selected`);
+    if (serials.length) {
+      const problem = await store.syncDocumentStock(existingId || null, payload.doc_type, serials, true);
+      if (problem) throw new Error(problem);
+    }
+  }
 
   const totals = computeTotals({
     items,
@@ -522,6 +545,10 @@ async function saveDocument(payload, existingId) {
   }
 
   const saved = await store.saveDocument(record, existingId);
+  if (takesStock && (serials.length || existingId)) {
+    const problem = await store.syncDocumentStock(saved.id, payload.doc_type, serials, false);
+    if (problem) throw new Error(`${saved.doc_number} was saved, but stock was not updated — ${problem}. Open it and re-select the serial numbers.`);
+  }
   await addNewItemsToProducts(items);
   return saved;
 }

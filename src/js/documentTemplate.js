@@ -61,8 +61,10 @@ function buildItemDescHtml(it) {
     it.use_accessories ? ['Accessories', it.spec_accessories] : null
   ].filter(pair => pair && pair[1]);
   const engineHtml = engineFields.map(([label, v]) => `<div class="item-detail"><strong>${esc(label)}:</strong> ${esc(v)}</div>`).join('');
+  const serialHtml = Array.isArray(it.serial_nos) && it.serial_nos.length
+    ? `<div class="item-detail"><strong>Sl. No:</strong> ${esc(it.serial_nos.join(', '))}</div>` : '';
 
-  return title + detailsHtml + engineHtml;
+  return title + detailsHtml + engineHtml + serialHtml;
 }
 
 function buildDocumentHtml(doc, settings, customer, cssText) {

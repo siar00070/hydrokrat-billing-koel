@@ -4,6 +4,7 @@ const routes = {
   customers: (root) => renderCustomers(root),
   suppliers: (root) => renderSuppliers(root),
   products: (root) => renderProducts(root),
+  stock: (root) => renderStock(root),
   settings: (root) => renderSettings(root),
   'document-editor': (root, params) => renderDocumentEditor(root, params)
 };

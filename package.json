@@ -1,7 +1,7 @@
 {
   "name": "hv-billing-koel",
   "productName": "HV Billing KOEL",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Hydrokrat Ventures (KOEL) - Quotation, Proforma Invoice & Tax Invoice billing software",
   "main": "main.js",
   "author": "Hydrokrat Ventures",

@@ -476,8 +476,28 @@ async function renderDocumentEditor(root, params) {
 
       const amount = (item.qty || 0) * (item.rate || 0);
 
+      // Tax Invoice / Delivery Challan: pick the serial-numbered units from stock (qty follows the count).
+      let serialBlock = null;
+      if (docType === 'tax_invoice' || docType === 'delivery_challan') {
+        const serials = item.serial_nos || [];
+        serialBlock = el('div', { style: 'margin-top:6px;font-size:11.5px' }, [
+          serials.length
+            ? el('div', { style: 'color:#0e3a5f;font-weight:600;margin-bottom:3px' }, ['Serial Nos: ' + serials.join(', ')])
+            : null,
+          el('span', { class: 'btn small secondary', onclick: () => openSerialPicker(
+            { item, docId: state.docId, docType },
+            (picked) => {
+              item.serial_nos = picked.length ? picked : null;
+              if (picked.length) item.qty = picked.length;
+              renderItems();
+              updateTotals();
+            }
+          ) }, [serials.length ? 'Change Serial Nos' : '🏷️ Select Serial Nos from Stock'])
+        ].filter(Boolean));
+      }
+
       itemsBody.appendChild(el('tr', {}, [
-        el('td', {}, [productSelect, descInput, specsToggleLabel, engineSpecToggleLabel, engineAccessoriesToggleLabel, accessoriesToggleLabel, pricingToggleLabel, accPricingToggleLabel].filter(Boolean)),
+        el('td', {}, [productSelect, descInput, specsToggleLabel, engineSpecToggleLabel, engineAccessoriesToggleLabel, accessoriesToggleLabel, pricingToggleLabel, accPricingToggleLabel, serialBlock].filter(Boolean)),
         el('td', {}, [hsnSelect, hsnCustomInput]),
         el('td', {}, [qtyInput]),
         el('td', {}, [rateInput]),
@@ -733,9 +753,19 @@ async function renderDocumentEditor(root, params) {
         transportation: transportationInput ? (transportationInput.value.trim() || null) : null,
         items
       };
+      const serialMismatch = items.find(it => it.serial_nos && it.serial_nos.length && it.serial_nos.length !== it.qty);
+      if (serialMismatch) {
+        showToast(`"${String(serialMismatch.description).split('\n')[0]}": qty is ${serialMismatch.qty} but ${serialMismatch.serial_nos.length} serial no(s) selected`);
+        return;
+      }
       let saved;
-      if (state.docId) saved = await window.api.documents.update(state.docId, payload);
-      else saved = await window.api.documents.create(payload);
+      try {
+        if (state.docId) saved = await window.api.documents.update(state.docId, payload);
+        else saved = await window.api.documents.create(payload);
+      } catch (err) {
+        showToast(String(err.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''));
+        return;
+      }
       showToast(`Saved ${saved.doc_number}`);
       navigate('document-editor', { docId: saved.id, preview: true });
     }
@@ -851,7 +881,8 @@ function emptyItem() {
     use_accessories: false, spec_accessories: '',
     use_pricing_calc: false, use_acc_pricing_calc: false, item_lp: null, item_discount_pct: null, item_freight: null, item_margin_pct: null,
     item_acc_lp: null, item_acc_discount_pct: null, item_eng_acc_lp: null, item_eng_acc_discount_pct: null,
-    item_fixed_price: null
+    item_fixed_price: null,
+    serial_nos: null
   };
 }
 
