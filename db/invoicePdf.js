@@ -36,24 +36,22 @@ function parseDate(s) {
   return `${m[3]}-${String(month).padStart(2, '0')}-${m[1].padStart(2, '0')}`;
 }
 
-// "AB100 to AB103,AB110" -> [AB100, AB101, AB102, AB103, AB110]; tolerates a missing comma
-// between two serials and serials broken across lines.
+// "AB100 to AB103,AB110" -> [AB100, AB101, AB102, AB103, AB110]. Serials may be numeric (FH643505525) or
+// mixed (SBV26J07D05GLAWM) and can break across lines. "to" only expands when both ends share a prefix and
+// differ in their trailing number; otherwise both ends are simply two serials.
 function expandSerials(block) {
   const joined = block.replace(/\s*\bto\b\s*/gi, ' to ').replace(/\n/g, '');
-  const tokens = joined.match(/[A-Za-z]+\d+|\bto\b/gi) || [];
+  const tokens = joined.split(/[,\s]+/).filter(Boolean)
+    // A missing comma between two numeric serials: PH611900111PI611900122
+    .flatMap(t => { const m = t.match(/^([A-Za-z]{1,4}\d{6,})([A-Za-z]{1,4}\d{6,})$/); return m ? [m[1], m[2]] : [t]; });
   const out = [];
   for (let i = 0; i < tokens.length; i++) {
     const tok = tokens[i].toUpperCase();
     if (tok === 'TO') continue;
-    if ((tokens[i + 1] || '').toLowerCase() === 'to' && tokens[i + 2]) {
-      const end = tokens[i + 2].toUpperCase();
-      const a = tok.match(/^([A-Z]+)(\d+)$/), b = end.match(/^([A-Z]+)(\d+)$/);
-      const from = parseInt(a[2], 10), to = parseInt(b[2], 10);
-      if (a[1] === b[1] && to >= from && to - from < 5000) {
-        for (let n = from; n <= to; n++) out.push(a[1] + String(n).padStart(a[2].length, '0'));
-      } else {
-        out.push(tok, end);
-      }
+    const end = (tokens[i + 1] || '').toLowerCase() === 'to' && tokens[i + 2] ? tokens[i + 2].toUpperCase() : null;
+    const a = tok.match(/^(.*?)(\d+)$/), b = end && end.match(/^(.*?)(\d+)$/);
+    if (a && b && a[1] === b[1] && a[1] && a[2].length === b[2].length && +b[2] >= +a[2] && +b[2] - +a[2] < 5000) {
+      for (let n = +a[2]; n <= +b[2]; n++) out.push(a[1] + String(n).padStart(a[2].length, '0'));
       i += 2;
     } else {
       out.push(tok);
@@ -62,7 +60,14 @@ function expandSerials(block) {
   return out;
 }
 
-const SERIAL_LINE = /^[A-Za-z]{1,4}\d{4,}/;
+// A serial-number line is only codes, commas and "to" — no spaces inside a description, no brackets.
+function isSerialLine(line) {
+  const tokens = line.split(/[,\s]+/).filter(t => t && t.toLowerCase() !== 'to');
+  return tokens.length > 0 && tokens.every(t => /^[A-Za-z0-9]+$/.test(t)) &&
+    tokens.some(t => t.length >= 7 && /[A-Za-z]/.test(t) && /\d/.test(t)) &&
+    !/\bHP\b/i.test(line);
+}
+
 const ITEM_START = /^(\d{1,3})\s+([A-Z0-9][A-Z0-9.\-]{8,})\s*$/;
 
 function parseInvoiceText(fullText) {
@@ -95,7 +100,7 @@ function parseInvoiceText(fullText) {
     if (!cur) continue;
     if (/^Total\b/i.test(line)) { finish(); continue; }
     if (/^(SO No|PO No)/i.test(line)) { stage = 'tail'; continue; }
-    if (stage === 'desc' && SERIAL_LINE.test(line) && !/\bHP\b/i.test(line)) stage = 'serial';
+    if (stage === 'desc' && isSerialLine(line)) stage = 'serial';
     if (stage === 'desc') cur.descLines.push(line);
     else if (stage === 'serial') cur.serialLines.push(line);
     else cur.tail.push(line);

@@ -312,6 +312,9 @@ async function openPurchaseInvoiceModal(opts, onSaved) {
       const short = draft.lines.filter(l => l.serials.length > 0 && l.serials.length !== l.qty);
       pdfNote.appendChild(el('div', { style: 'color:#15803d;font-weight:600' }, [
         `Read ${file.name}: ${draft.lines.length} item(s), ${units} serial no(s)${noSerial.length ? `, ${noSerial.length} item(s) with no serial no` : ''}. Check the details, then Save.`]));
+      const pumpsNoSerial = noSerial.filter(l => String(l.hsn_sac).startsWith('841370'));
+      if (pumpsNoSerial.length) pdfNote.appendChild(el('div', { style: 'color:#c0392b;font-weight:600' }, [
+        `Check: no serial nos found for these pumps — ${pumpsNoSerial.map(l => l.description).join('; ')}`]));
       if (newProducts.length) pdfNote.appendChild(el('div', { style: 'color:#0e3a5f' }, [
         `${newProducts.length} new item(s) will be added to Products when you save.`]));
       if (supplierMsg) pdfNote.appendChild(supplierMsg);
