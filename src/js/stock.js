@@ -38,13 +38,17 @@ async function renderStock(root) {
   async function load() {
     card.innerHTML = '';
     if (active === 'invoices') return drawInvoices();
-    const units = await window.api.stock.listUnits(searchInput.value.trim());
-    if (active === 'instock') drawInStock(units.filter(u => !u.out_document_id));
-    else drawSerials(units);
+    const search = searchInput.value.trim();
+    const units = await window.api.stock.listUnits(search);
+    if (active === 'instock') {
+      const qtyRows = (await window.api.stock.listQty())
+        .filter(r => r.balance > 0 && String(r.description).toLowerCase().includes(search.toLowerCase()));
+      drawInStock(units.filter(u => !u.out_document_id), qtyRows);
+    } else drawSerials(units);
   }
 
-  function drawInStock(units) {
-    if (units.length === 0) {
+  function drawInStock(units, qtyRows) {
+    if (units.length === 0 && qtyRows.length === 0) {
       card.appendChild(el('div', { class: 'empty-state' }, ['Nothing in stock. Use "+ Add Purchase Invoice" to receive goods.']));
       return;
     }
@@ -62,7 +66,15 @@ async function renderStock(root) {
         el('td', { style: 'font-size:12px' }, [g.units.map(u => u.serial_no).join(', ')])
       ]));
     });
-    card.appendChild(el('div', { style: 'font-size:12px;color:#6b7280;margin-bottom:8px' }, [`${units.length} unit(s) in stock`]));
+    qtyRows.forEach(r => {
+      tbody.appendChild(el('tr', {}, [
+        el('td', {}, [String(r.description).split('\n')[0]]),
+        el('td', { style: 'text-align:center;font-weight:700' }, [String(r.balance)]),
+        el('td', { style: 'font-size:12px;color:#6b7280' }, ['No serial no.'])
+      ]));
+    });
+    const total = units.length + qtyRows.reduce((n, r) => n + r.balance, 0);
+    card.appendChild(el('div', { style: 'font-size:12px;color:#6b7280;margin-bottom:8px' }, [`${total} unit(s) in stock`]));
     card.appendChild(el('table', { class: 'data-table' }, [
       el('thead', {}, [el('tr', {}, [el('th', {}, ['Item']), el('th', {}, ['Qty']), el('th', {}, ['Serial Nos'])])]),
       tbody
@@ -113,9 +125,12 @@ async function renderStock(root) {
         el('td', {}, [fmtDate(inv.invoice_date)]),
         el('td', {}, [inv.supplier_name || '-']),
         el('td', {}, [inv.po_number || 'Direct']),
-        el('td', {}, [`${inv.in_stock_count} / ${inv.unit_count} in stock`]),
+        el('td', {}, [[
+          inv.unit_count ? `${inv.in_stock_count} / ${inv.unit_count} in stock` : null,
+          inv.qty_only_count ? `${inv.qty_only_count} without serial no.` : null
+        ].filter(Boolean).join(', ')]),
         el('td', {}, [el('span', { class: 'btn small danger', onclick: async () => {
-          if (!confirmDialog(`Delete purchase invoice ${inv.invoice_no} and its ${inv.unit_count} serial no(s) from stock?`)) return;
+          if (!confirmDialog(`Delete purchase invoice ${inv.invoice_no} and its ${inv.unit_count + inv.qty_only_count} unit(s) from stock?`)) return;
           await window.api.stock.deletePurchaseInvoice(inv.id);
           showToast('Purchase invoice deleted');
           load();
@@ -161,7 +176,7 @@ async function openPurchaseInvoiceModal(opts, onSaved) {
   let lines = [];
   const linesBody = el('tbody');
 
-  function blankLine() { return { product_id: null, description: '', hsn_sac: '', qty: 1, rate: 0, serialsText: '' }; }
+  function blankLine() { return { product_id: null, description: '', hsn_sac: '', qty: 1, rate: 0, serialsText: '', noSerial: false }; }
 
   function drawLines() {
     linesBody.innerHTML = '';
@@ -179,6 +194,7 @@ async function openPurchaseInvoiceModal(opts, onSaved) {
       const serialsInput = el('textarea', { rows: Math.min(Math.max(line.qty, 2), 8), placeholder: 'One serial no. per line (or comma separated)' }, [line.serialsText]);
       const countNote = el('div', { style: 'font-size:11px;margin-top:2px' });
       const refreshCount = () => {
+        if (line.noSerial) { countNote.textContent = ''; return; }
         const n = parseSerials(line.serialsText).length;
         countNote.textContent = `${n} / ${line.qty} serial no(s)`;
         countNote.style.color = n === line.qty ? '#15803d' : '#c0392b';
@@ -187,12 +203,18 @@ async function openPurchaseInvoiceModal(opts, onSaved) {
       rateInput.addEventListener('input', () => { line.rate = parseFloat(rateInput.value) || 0; });
       serialsInput.addEventListener('input', () => { line.serialsText = serialsInput.value; refreshCount(); });
       refreshCount();
+      const noSerialInput = el('input', { type: 'checkbox', style: 'width:auto;margin:0' });
+      noSerialInput.checked = !!line.noSerial;
+      noSerialInput.addEventListener('change', () => { line.noSerial = noSerialInput.checked; drawLines(); });
+      const noSerialLabel = el('label', { style: 'display:flex;gap:6px;align-items:center;font-size:11.5px;color:#6b7280;margin-top:4px;cursor:pointer' }, [noSerialInput, 'No serial no. (stock by quantity)']);
       linesBody.appendChild(el('tr', {}, [
         el('td', { style: 'width:42%' }, [itemInput,
           itemTitle ? el('div', { style: 'font-size:11px;color:#6b7280;margin-top:3px' }, [itemTitle]) : null].filter(Boolean)),
         el('td', {}, [qtyInput]),
         el('td', {}, [rateInput]),
-        el('td', {}, [serialsInput, countNote]),
+        el('td', {}, line.noSerial
+          ? [el('div', { style: 'font-size:12px;font-weight:600;color:#0e3a5f' }, [`Quantity only: ${line.qty} unit(s)`]), noSerialLabel]
+          : [serialsInput, countNote, noSerialLabel]),
         el('td', {}, [el('span', {
           style: 'cursor:pointer;color:#c0392b;font-weight:700',
           onclick: () => { lines.splice(idx, 1); if (!lines.length) lines.push(blankLine()); drawLines(); }
@@ -224,14 +246,14 @@ async function openPurchaseInvoiceModal(opts, onSaved) {
       notes: notesInput.value.trim(),
       lines: lines.filter(l => l.description && l.qty > 0).map(l => ({
         product_id: l.product_id, description: l.description, hsn_sac: l.hsn_sac, rate: l.rate,
-        qty: l.qty, serials: parseSerials(l.serialsText)
+        qty: l.qty, no_serial: !!l.noSerial, serials: l.noSerial ? [] : parseSerials(l.serialsText)
       }))
     };
     if (!payload.supplier_id) { showToast('Select the supplier'); return; }
     if (!payload.invoice_no) { showToast("Enter the supplier's invoice number"); return; }
     if (!payload.lines.length) { showToast('Add at least one item'); return; }
-    const bad = payload.lines.find(l => l.serials.length !== l.qty);
-    if (bad) { showToast(`"${String(bad.description).split('\n')[0]}": enter exactly ${bad.qty} serial no(s) — one per unit`); return; }
+    const bad = payload.lines.find(l => !l.no_serial && l.serials.length !== l.qty);
+    if (bad) { showToast(`"${String(bad.description).split('\n')[0]}": enter exactly ${bad.qty} serial no(s), or tick "No serial no."`); return; }
     saveBtn.disabled = true;
     try {
       const saved = await window.api.stock.createPurchaseInvoice(payload);
@@ -280,14 +302,18 @@ async function openPurchaseInvoiceModal(opts, onSaved) {
       }
       lines = draft.lines.map(l => ({
         product_id: l.product_id, description: l.product_description || l.description,
-        hsn_sac: l.hsn_sac, qty: l.qty, rate: l.rate, serialsText: l.serials.join('\n')
+        hsn_sac: l.hsn_sac, qty: l.qty, rate: l.rate, serialsText: l.serials.join('\n'), noSerial: l.serials.length === 0
       }));
       drawLines();
       const units = draft.lines.reduce((n, l) => n + l.serials.length, 0);
-      const unmatched = draft.lines.filter(l => !l.product_id);
-      const short = draft.lines.filter(l => l.serials.length !== l.qty);
+      const noSerial = draft.lines.filter(l => l.serials.length === 0);
+      const unmatched = draft.lines.filter(l => !l.product_id && l.serials.length > 0);
+      const newProducts = noSerial.filter(l => !l.product_id);
+      const short = draft.lines.filter(l => l.serials.length > 0 && l.serials.length !== l.qty);
       pdfNote.appendChild(el('div', { style: 'color:#15803d;font-weight:600' }, [
-        `Read ${file.name}: ${draft.lines.length} item(s), ${units} serial no(s). Check the details, then Save.`]));
+        `Read ${file.name}: ${draft.lines.length} item(s), ${units} serial no(s)${noSerial.length ? `, ${noSerial.length} item(s) with no serial no` : ''}. Check the details, then Save.`]));
+      if (newProducts.length) pdfNote.appendChild(el('div', { style: 'color:#0e3a5f' }, [
+        `${newProducts.length} new item(s) will be added to Products when you save.`]));
       if (supplierMsg) pdfNote.appendChild(supplierMsg);
       if (unmatched.length) pdfNote.appendChild(el('div', { style: 'color:#b45309' }, [
         `Not matched to a product (kept as typed on the invoice): ${unmatched.map(l => l.description).join('; ')}`]));

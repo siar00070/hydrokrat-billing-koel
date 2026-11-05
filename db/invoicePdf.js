@@ -65,7 +65,10 @@ function expandSerials(block) {
 const SERIAL_LINE = /^[A-Za-z]{1,4}\d{4,}/;
 const ITEM_START = /^(\d{1,3})\s+([A-Z0-9][A-Z0-9.\-]{8,})\s*$/;
 
-function parseInvoiceText(text) {
+function parseInvoiceText(fullText) {
+  // A PDF can hold the Original / Duplicate / Triplicate copies of one invoice; read only the first.
+  const copyEnd = fullText.search(/Total Invoice Value/i);
+  const text = copyEnd > 0 ? fullText.slice(0, copyEnd) : fullText;
   const lines = text.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean);
   const all = lines.join('\n');
   const header = {
@@ -110,7 +113,7 @@ function parseInvoiceText(text) {
     const serials = expandSerials(it.serialLines.join('\n'));
     return {
       item_code: it.code,
-      description: it.descLines.join(' ').replace(/\s+/g, ' ').trim(),
+      description: it.descLines.join(' ').replace(/- (?=\S*\))/g, '-').replace(/\s+/g, ' ').trim(),
       hsn_sac: hsnIdx >= 0 ? String(nums[hsnIdx]) : '',
       qty: qty || serials.length,
       rate: qty && taxable ? Math.round((taxable / qty) * 100) / 100 : 0,
@@ -129,6 +132,7 @@ function matchProduct(description, products) {
   const stage = (String(description).match(/(\d+)\s*STAGE/i) || [])[1];
   let best = null;
   for (const p of products) {
+    if (norm(p.description) === target) return p; // added from an earlier invoice
     const models = String(p.spec_model || '').split('/').map(norm).filter(m => m.length >= 3);
     const len = Math.max(0, ...models.filter(m => target.startsWith(m)).map(m => m.length));
     if (!len) continue;

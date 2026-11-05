@@ -111,6 +111,7 @@ function registerIpc() {
   // Documents
   // Stock
   ipcMain.handle('stock:list_units', (e, search) => store.listStockUnits(search));
+  ipcMain.handle('stock:list_qty', (e, excludeDocIds) => store.listQtyStock(excludeDocIds));
   ipcMain.handle('stock:list_purchase_invoices', () => store.listPurchaseInvoices());
   ipcMain.handle('stock:create_purchase_invoice', (e, inv) => store.createPurchaseInvoice(inv));
   ipcMain.handle('stock:delete_purchase_invoice', (e, id) => store.deletePurchaseInvoice(id));
@@ -123,7 +124,9 @@ function registerIpc() {
     const draft = parseInvoiceText(text);
     const [products, suppliers] = await Promise.all([store.listProducts(), store.listSuppliers()]);
     const norm = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const supplier = suppliers.find(s => draft.supplier_gstin && norm(s.gstin) === norm(draft.supplier_gstin)) ||
+    // One company has a GSTIN per state; the PAN inside it (characters 3-12) stays the same.
+    const pan = norm(draft.supplier_gstin).slice(2, 12);
+    const supplier = suppliers.find(s => pan && norm(s.gstin).slice(2, 12) === pan) ||
       suppliers.find(s => draft.supplier_name && norm(s.name) === norm(draft.supplier_name));
     return {
       ...draft,
@@ -178,6 +181,7 @@ function registerIpc() {
         serial_nos: (original.doc_type === 'delivery_challan' && newDocType === 'tax_invoice') ? (it.serial_nos || null) : null
       }))
     };
+    if (original.doc_type === 'delivery_challan' && newDocType === 'tax_invoice') payload.source_dc_id = original.id;
     return saveDocument(payload, null);
   });
 
@@ -563,6 +567,7 @@ async function saveDocument(payload, existingId) {
     const year = new Date(payload.doc_date).getFullYear() || new Date().getFullYear();
     record.doc_number = await store.nextDocNumber(payload.doc_type, year);
     record.branch_name = localConfig.getBranchName() || null;
+    if (payload.source_dc_id) record.source_dc_id = payload.source_dc_id;
   }
 
   const saved = await store.saveDocument(record, existingId);
@@ -570,6 +575,7 @@ async function saveDocument(payload, existingId) {
     const problem = await store.syncDocumentStock(saved.id, payload.doc_type, serials, false);
     if (problem) throw new Error(`${saved.doc_number} was saved, but stock was not updated — ${problem}. Open it and re-select the serial numbers.`);
   }
+  if (takesStock) await store.syncDocumentQty(saved.id);
   await addNewItemsToProducts(items);
   return saved;
 }

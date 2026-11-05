@@ -14,6 +14,15 @@ async function renderDocumentEditor(root, params) {
     docType = doc.doc_type;
   }
 
+  // Quantity-only stock (items without serial numbers), leaving out this document and its Delivery Challan.
+  const takesStock = docType === 'tax_invoice' || docType === 'delivery_challan';
+  const qtyStock = takesStock ? await window.api.stock.listQty([doc && doc.id, doc && doc.source_dc_id].filter(Boolean)) : [];
+  const qtyRowFor = (item) => {
+    const title = String(item.description || '').split('\n')[0].trim().toLowerCase();
+    return qtyStock.find(r => r.product_id === item.product_id) ||
+      (!item.product_id && title ? qtyStock.find(r => String(r.description).split('\n')[0].trim().toLowerCase() === title) : null);
+  };
+
   const state = {
     docType,
     docId: doc ? doc.id : null,
@@ -480,7 +489,10 @@ async function renderDocumentEditor(root, params) {
       let serialBlock = null;
       if (docType === 'tax_invoice' || docType === 'delivery_challan') {
         const serials = item.serial_nos || [];
-        serialBlock = el('div', { style: 'margin-top:6px;font-size:11.5px' }, [
+        const qtyRow = qtyRowFor(item);
+        serialBlock = qtyRow ? el('div', { style: 'margin-top:6px;font-size:11.5px;color:#0e3a5f;font-weight:600' }, [
+          `No serial no. — ${Math.max(0, qtyRow.balance)} in stock`
+        ]) : el('div', { style: 'margin-top:6px;font-size:11.5px' }, [
           serials.length
             ? el('div', { style: 'color:#0e3a5f;font-weight:600;margin-bottom:3px' }, ['Serial Nos: ' + serials.join(', ')])
             : null,
@@ -756,6 +768,16 @@ async function renderDocumentEditor(root, params) {
       const serialMismatch = items.find(it => it.serial_nos && it.serial_nos.length && it.serial_nos.length !== it.qty);
       if (serialMismatch) {
         showToast(`"${String(serialMismatch.description).split('\n')[0]}": qty is ${serialMismatch.qty} but ${serialMismatch.serial_nos.length} serial no(s) selected`);
+        return;
+      }
+      const needed = new Map();
+      items.filter(it => !(it.serial_nos && it.serial_nos.length)).forEach(it => {
+        const row = qtyRowFor(it);
+        if (row) needed.set(row, (needed.get(row) || 0) + (Number(it.qty) || 0));
+      });
+      const shortages = [...needed].filter(([row, qty]) => qty > row.balance);
+      if (shortages.length && !confirmDialog('Not enough stock:\n' + shortages.map(([row, qty]) =>
+        `${String(row.description).split('\n')[0]}: ${qty} on this document, ${Math.max(0, row.balance)} in stock`).join('\n') + '\n\nSave anyway?')) {
         return;
       }
       let saved;
