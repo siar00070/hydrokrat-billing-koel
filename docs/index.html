@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Hydrokrat Stock List</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+/* Layout: a super stockist's register for dealers. Sticky search, then pump families that fold open to items. */
+:root {
+  --bg: #f1f4f5; --surface: #ffffff; --surface-2: #e8eef0; --fg: #16262e; --muted: #5b6d75; --line: #d3dcdf;
+  --accent: #0b6f64; --accent-soft: #d9efec; --head: #0e3a5f; --head-fg: #ffffff;
+  --alert: #b3261e; --mark: #ffe08a; --mark-fg: #16262e;
+  --display: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  --body: "Barlow", "Segoe UI", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #101a1f; --surface: #182429; --surface-2: #213037; --fg: #e4ecee; --muted: #9db0b7; --line: #30434b;
+  --accent: #4fc4b5; --accent-soft: #173a37; --head: #1b4a70; --head-fg: #f1f6fa;
+  --alert: #ff8f86; --mark: #b98f1d; --mark-fg: #101a1f; color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #101a1f; --surface: #182429; --surface-2: #213037; --fg: #e4ecee; --muted: #9db0b7; --line: #30434b;
+  --accent: #4fc4b5; --accent-soft: #173a37; --head: #1b4a70; --head-fg: #f1f6fa;
+  --alert: #ff8f86; --mark: #b98f1d; --mark-fg: #101a1f; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.4; font-variant-numeric: tabular-nums; }
+.wrap { max-width: 900px; margin: 0 auto; padding-block: 24px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 12px; }
+h1 { font-family: var(--display); font-size: 34px; line-height: 1; margin: 0; }
+.sub { color: var(--muted); font-size: 13.5px; margin-top: 4px; }
+.tools { position: sticky; top: 0; z-index: 5; background: var(--bg); padding-block: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+#search { flex: 1 1 260px; min-width: 0; font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+#search:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tool { font: 600 13.5px var(--body); color: var(--fg); background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; cursor: pointer; }
+.tool:hover { border-color: var(--accent); }
+.cols, .item-row, .group-head { display: grid; grid-template-columns: 22px minmax(0, 1fr) 84px; gap: 10px; align-items: center; padding-inline: 14px; }
+.cols { background: var(--head); color: var(--head-fg); font: 600 12px var(--body); letter-spacing: .06em; text-transform: uppercase; padding-block: 9px; border-radius: 6px 6px 0 0; }
+.num { text-align: right; }
+.group { background: var(--surface); border: 1px solid var(--line); border-top: 0; }
+.group:last-child { border-radius: 0 0 6px 6px; }
+.group-head { width: 100%; font: inherit; color: inherit; background: var(--surface-2); border: 0; cursor: pointer; text-align: left; padding-block: 10px; }
+.group-head:hover { background: var(--accent-soft); }
+.group-name { font-family: var(--display); font-size: 19px; font-weight: 700; letter-spacing: .01em; }
+.chev { display: inline-block; color: var(--accent); font-size: 12px; transition: transform .12s; }
+[aria-expanded="true"] > .chev { transform: rotate(90deg); }
+.item-row { border-top: 1px solid var(--line); padding-block: 10px; }
+.model { font-weight: 600; }
+.desc { color: var(--muted); font-size: 13px; }
+.qty { font-weight: 600; }
+mark { background: var(--mark); color: var(--mark-fg); border-radius: 2px; padding-inline: 1px; }
+.state { background: var(--surface); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 6px 6px; padding: 28px 16px; text-align: center; color: var(--muted); }
+.state.error { color: var(--alert); }
+@media (max-width: 480px) {
+  .cols, .item-row, .group-head { grid-template-columns: 18px minmax(0, 1fr) 62px; gap: 8px; padding-inline: 10px; }
+  h1 { font-size: 30px; }
+}
+@media (prefers-reduced-motion: reduce) { .chev { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Stock List</h1>
+    <div class="sub">Hydrokrat Ventures · KOEL Varuna <span id="updated"></span></div>
+  </header>
+
+  <div class="tools">
+    <input id="search" type="search" placeholder="Search model or item" aria-label="Search model or item" autocomplete="off">
+    <button class="tool" id="toggle" type="button">Expand all</button>
+  </div>
+
+  <main>
+    <div class="cols"><span></span><span>Item</span><span class="num">Quantity</span></div>
+    <div id="register"><div class="state">Loading stock...</div></div>
+  </main>
+</div>
+
+<script>
+// Public by design: this key only reaches what the database allows without a login,
+// which for this page is public_stock_list() (item name and quantity).
+const SUPABASE_URL = 'https://wohbeyxvszanfvrngplq.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_gFvWcxQxv1WjajonYE34Rg_Sgl4n4TN';
+
+const $ = (id) => document.getElementById(id);
+let groups = [];
+const openGroups = new Set();
+
+function make(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+
+// Text with the search term marked; built as nodes, so nothing is read as HTML.
+function marked(tag, cls, text, q) {
+  const n = make(tag, cls);
+  const at = q ? text.toLowerCase().indexOf(q) : -1;
+  if (at < 0) { n.textContent = text; return n; }
+  n.append(text.slice(0, at), make('mark', '', text.slice(at, at + q.length)), text.slice(at + q.length));
+  return n;
+}
+
+// "KOEL Varuna <family> - <model> - <rating> - <stages>" -> family, model, details.
+function toGroups(rows) {
+  const byName = new Map();
+  rows.forEach(r => {
+    const text = String(r.item).replace(/^KOEL Varuna\s+/i, '');
+    const parts = text.split(' - ');
+    let family, model, desc;
+    if (parts.length >= 2) {
+      family = parts[0]; model = parts[1]; desc = parts.slice(2).join(' · ');
+    } else {
+      family = /control panel/i.test(text) ? 'Control Panels' : 'Other Items';
+      model = text; desc = '';
+    }
+    if (!byName.has(family)) byName.set(family, []);
+    byName.get(family).push({ model, desc, qty: Number(r.quantity) });
+  });
+  return [...byName.entries()]
+    .map(([name, items]) => ({ name, items }))
+    .sort((a, b) => (a.name === 'Other Items') - (b.name === 'Other Items') || a.name.localeCompare(b.name));
+}
+
+function render() {
+  const q = $('search').value.trim().toLowerCase();
+  const reg = $('register');
+  reg.textContent = '';
+  groups.forEach(g => {
+    const groupHit = q && g.name.toLowerCase().includes(q);
+    const items = g.items.filter(it => !q || groupHit || (it.model + ' ' + it.desc).toLowerCase().includes(q));
+    if (!items.length) return;
+    const section = make('section', 'group');
+    const isOpen = q ? true : openGroups.has(g.name);
+    const head = make('button', 'group-head');
+    head.type = 'button';
+    head.setAttribute('aria-expanded', String(isOpen));
+    head.append(make('span', 'chev', '▶'), marked('span', 'group-name', g.name, q),
+      make('span', 'num qty', String(g.items.reduce((n, it) => n + it.qty, 0))));
+    head.addEventListener('click', () => {
+      if (openGroups.has(g.name)) openGroups.delete(g.name); else openGroups.add(g.name);
+      render();
+    });
+    section.append(head);
+    if (isOpen) items.forEach(it => {
+      const row = make('div', 'item-row');
+      const label = make('div');
+      label.append(marked('div', 'model', it.model, q));
+      if (it.desc) label.append(marked('div', 'desc', it.desc, q));
+      row.append(make('span'), label, make('span', 'num qty', String(it.qty)));
+      section.append(row);
+    });
+    reg.append(section);
+  });
+  if (!reg.children.length) {
+    const typed = $('search').value.trim();
+    reg.append(make('div', 'state', typed ? `Nothing matches "${typed}". Try a model such as Pearl or ULTRA.` : 'No stock available right now.'));
+  }
+  $('toggle').textContent = groups.length && groups.every(g => openGroups.has(g.name)) ? 'Collapse all' : 'Expand all';
+}
+
+async function load() {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/public_stock_list`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_KEY, 'Content-Type': 'application/json' },
+      body: '{}'
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    groups = toGroups(await res.json());
+    if (groups[0]) openGroups.add(groups[0].name);
+    $('updated').textContent = '· as on ' + new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+    render();
+  } catch (err) {
+    const box = $('register');
+    box.textContent = '';
+    box.append(make('div', 'state error', 'Could not load the stock list. Please check your internet connection and refresh this page.'));
+  }
+}
+
+$('search').addEventListener('input', () => { if (groups.length) render(); });
+$('toggle').addEventListener('click', () => {
+  const allOpen = groups.every(g => openGroups.has(g.name));
+  openGroups.clear();
+  if (!allOpen) groups.forEach(g => openGroups.add(g.name));
+  render();
+});
+load();
+</script>
+</body>
+</html>
