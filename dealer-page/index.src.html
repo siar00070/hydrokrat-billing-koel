@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Hydrokrat KOEL</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+/* Layout: a super stockist's register for dealers. Sticky search, pump families that fold open to items,
+   a quantity stepper per item, a bottom bar for the order list, and a print sheet for the dealer's PO. */
+:root {
+  color-scheme: light; /* light only: the brand logos have dark lettering and are shown straight on the page */
+  --bg: #f1f4f5; --surface: #ffffff; --surface-2: #e8eef0; --fg: #16262e; --muted: #5b6d75; --line: #d3dcdf;
+  --accent: #0b6f64; --accent-soft: #d9efec; --on-accent: #ffffff; --head: #0e3a5f; --head-fg: #ffffff;
+  --alert: #b3261e; --mark: #ffe08a; --mark-fg: #16262e;
+  --display: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  --body: "Barlow", "Segoe UI", Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.4; font-variant-numeric: tabular-nums; }
+.wrap { max-width: 900px; margin: 0 auto; padding-block: 24px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 12px; }
+body.has-bar .wrap { padding-bottom: 104px; }
+h1 { font-family: var(--display); font-size: 34px; line-height: 1; margin: 0; }
+.sub { color: var(--muted); font-size: 13.5px; margin-top: 4px; }
+.how { color: var(--muted); font-size: 13.5px; }
+/* Brand logos sit straight on the page background. */
+.brandbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 24px; padding-bottom: 4px; }
+.brandbar img { display: block; width: auto; }
+.brandbar .hv { height: 44px; }
+.brands { display: flex; align-items: center; gap: 18px; }
+.brands img { height: 46px; }
+.brands img.varuna { height: 30px; }
+.brands .rule { width: 1px; align-self: stretch; background: var(--line); }
+.tools { position: sticky; top: 0; z-index: 5; background: var(--bg); padding-block: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+#search { flex: 1 1 260px; min-width: 0; font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tool { font: 600 13.5px var(--body); color: var(--fg); background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; cursor: pointer; }
+.tool:hover { border-color: var(--accent); }
+.cols, .item-row, .group-head { display: grid; grid-template-columns: 22px minmax(0, 1fr) 76px 122px; gap: 10px; align-items: center; padding-inline: 14px; }
+.cols { background: var(--head); color: var(--head-fg); font: 600 12px var(--body); letter-spacing: .06em; text-transform: uppercase; padding-block: 9px; border-radius: 6px 6px 0 0; }
+.num { text-align: right; }
+.group { background: var(--surface); border: 1px solid var(--line); border-top: 0; }
+.group:last-child { border-radius: 0 0 6px 6px; }
+.group-head { width: 100%; font: inherit; color: inherit; background: var(--surface-2); border: 0; cursor: pointer; text-align: left; padding-block: 10px; }
+.group-head:hover { background: var(--accent-soft); }
+.group-title { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
+.group-name { font-family: var(--display); font-size: 19px; font-weight: 700; letter-spacing: .01em; }
+.picked { font-size: 12px; font-weight: 600; color: var(--on-accent); background: var(--accent); border-radius: 10px; padding: 1px 8px; }
+.chev { display: inline-block; color: var(--accent); font-size: 12px; transition: transform .12s; }
+[aria-expanded="true"] > .chev { transform: rotate(90deg); }
+.sub-head { border-top: 1px solid var(--line); padding: 8px 14px 6px 46px; font: 600 12px var(--body); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); background: var(--surface); }
+.item-row { border-top: 1px solid var(--line); padding-block: 9px; }
+.model { font-weight: 600; }
+.desc { color: var(--muted); font-size: 13px; }
+.qty { font-weight: 600; }
+.step { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.sbtn { width: 30px; height: 32px; padding: 0; font: 600 18px/1 var(--body); color: var(--fg); background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+.sbtn:hover { border-color: var(--accent); }
+.sin { width: 50px; height: 32px; padding: 0 2px; text-align: center; font: 600 14px var(--body); color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; -moz-appearance: textfield; appearance: textfield; }
+.sin::-webkit-inner-spin-button, .sin::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.sin.on { border-color: var(--accent); background: var(--accent-soft); }
+mark { background: var(--mark); color: var(--mark-fg); border-radius: 2px; padding-inline: 1px; }
+.state { background: var(--surface); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 6px 6px; padding: 28px 16px; text-align: center; color: var(--muted); }
+.state.error { color: var(--alert); }
+
+.bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--head); color: var(--head-fg); box-shadow: 0 -2px 12px rgba(0, 0, 0, .2);
+  padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.bar-in { max-width: 900px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+#barText { font-weight: 600; }
+.btn-bar { font: 600 14px var(--body); color: var(--head); background: #ffffff; border: 0; border-radius: 6px; padding: 10px 16px; cursor: pointer; white-space: nowrap; }
+.btn-main { font: 600 14px var(--body); color: var(--on-accent); background: var(--accent); border: 0; border-radius: 6px; padding: 10px 18px; cursor: pointer; }
+.btn-quiet { font: 600 14px var(--body); color: var(--fg); background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; cursor: pointer; }
+.toast { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); z-index: 40; max-width: min(92vw, 420px); background: var(--fg); color: var(--bg); font-size: 13.5px; padding: 8px 14px; border-radius: 6px; }
+
+.overlay { position: fixed; inset: 0; z-index: 30; background: rgba(8, 16, 20, .55); display: flex; align-items: flex-end; justify-content: center; }
+.dialog { background: var(--surface); color: var(--fg); width: min(720px, 100%); max-height: 92vh; overflow-y: auto; display: grid; gap: 12px; border-radius: 12px 12px 0 0;
+  padding: 18px max(16px, env(safe-area-inset-right, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.dialog h2 { font-family: var(--display); font-size: 26px; margin: 0; }
+.dlg-intro { margin: 0; color: var(--muted); font-size: 13.5px; }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.field label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 4px; }
+.field input { width: 100%; font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 9px 11px; }
+.otable { width: 100%; border-collapse: collapse; }
+.otable th { text-align: left; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 6px 4px; border-bottom: 2px solid var(--line); }
+.otable td { padding: 8px 4px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.otable td.q { width: 126px; }
+.total { font-weight: 600; text-align: right; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.actions .spacer { flex: 1; }
+
+#sheet { display: none; color: #111; background: #fff; font-family: Arial, Helvetica, sans-serif; font-size: 12px; line-height: 1.4; }
+#sheet .s-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-bottom: 2px solid #0e3a5f; padding-bottom: 10px; margin-bottom: 12px; }
+#sheet .s-head { align-items: center; }
+#sheet img { width: auto; display: block; }
+#sheet .hv { height: 46px; }
+#sheet .s-brands { display: flex; align-items: center; gap: 18px; }
+#sheet .s-brands img { height: 46px; }
+#sheet .s-brands img.varuna { height: 30px; }
+#sheet .s-co { font-size: 11px; color: #333; margin-bottom: 12px; }
+#sheet h2 { font-size: 19px; letter-spacing: .05em; color: #0e3a5f; margin: 0 0 4px; }
+#sheet .s-meta { display: flex; flex-wrap: wrap; gap: 4px 28px; margin: 6px 0 4px; }
+#sheet table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+#sheet th { text-align: left; color: #0e3a5f; border-bottom: 2px solid #0e3a5f; padding: 6px 6px; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+#sheet td { padding: 6px 6px; border-bottom: 1px solid #cfd6d9; vertical-align: top; }
+#sheet tr { page-break-inside: avoid; }
+#sheet .r { text-align: right; white-space: nowrap; }
+#sheet .d { color: #444; font-size: 11px; }
+#sheet .s-total td { font-weight: 700; border-bottom: 0; border-top: 2px solid #0e3a5f; }
+#sheet .s-note { margin-top: 16px; font-size: 11px; color: #333; border: 1px solid #cfd6d9; padding: 8px 10px; }
+
+@media (min-width: 600px) {
+  .overlay { align-items: center; padding: 24px; }
+  .dialog { border-radius: 10px; padding: 22px 24px; }
+}
+@media (max-width: 480px) {
+  .cols, .item-row, .group-head { grid-template-columns: 16px minmax(0, 1fr) 60px; gap: 6px 8px; padding-inline: 10px; }
+  .cols { letter-spacing: .02em; font-size: 11.5px; }
+  .cols span:last-child, .group-head .pad { display: none; }
+  .sub-head { padding-left: 34px; padding-right: 10px; }
+  .item-row .step { grid-column: 2 / -1; justify-content: flex-start; }
+  .sbtn { width: 28px; }
+  .sin { width: 42px; }
+  .brandbar .hv { height: 32px; }
+  .brands { gap: 12px; }
+  .brands img { height: 38px; }
+  .brands img.varuna { height: 24px; }
+  h1 { font-size: 30px; }
+}
+@media (prefers-reduced-motion: reduce) { .chev { transition: none; } }
+@media print {
+  @page { size: A4; margin: 14mm; }
+  html, body { background: #fff !important; }
+  .wrap, .bar, .overlay, .toast { display: none !important; }
+  #sheet { display: block; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brandbar">
+    <img class="hv" data-logo="hv" src="img/hv.png" alt="Hydrokrat Ventures">
+    <div class="brands">
+      <img data-logo="koel" src="img/koel.png" alt="KOEL Fluid Dynamics, a Kirloskar Group Company">
+      <span class="rule"></span>
+      <img class="varuna" data-logo="varuna" src="img/varuna.png" alt="Varuna Electric">
+    </div>
+  </div>
+  <header>
+    <h1>Stock List</h1>
+    <div class="sub">Hydrokrat Ventures · KOEL Varuna <span id="updated"></span></div>
+    <div class="how">Set the quantity you need against each item, then print the list and send it to us with your purchase order.</div>
+  </header>
+
+  <div class="tools">
+    <input id="search" type="search" placeholder="Search model or item" aria-label="Search model or item" autocomplete="off">
+    <button class="tool" id="toggle" type="button">Expand all</button>
+  </div>
+
+  <main>
+    <div class="cols"><span></span><span>Item</span><span class="num">Quantity</span><span class="num">Order</span></div>
+    <div id="register"><div class="state">Loading stock...</div></div>
+  </main>
+</div>
+
+<div class="bar" id="bar" hidden>
+  <div class="bar-in">
+    <div id="barText"></div>
+    <button class="btn-bar" id="review" type="button">Review and print</button>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+<div class="overlay" id="overlay" hidden></div>
+<div id="sheet">
+  <div class="s-head">
+    <img class="hv" data-logo="hv" alt="Hydrokrat Ventures">
+    <div class="s-brands">
+      <img data-logo="koel" alt="KOEL Fluid Dynamics">
+      <img class="varuna" data-logo="varuna" alt="Varuna Electric">
+    </div>
+  </div>
+  <div class="s-co" id="sCo"></div>
+  <div id="sheetBody"></div>
+</div>
+
+<script>
+// Public by design: this key only reaches what the database allows without a login,
+// which for this page is public_stock_list() (item name and quantity).
+const SUPABASE_URL = 'https://wohbeyxvszanfvrngplq.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_gFvWcxQxv1WjajonYE34Rg_Sgl4n4TN';
+const CONTACT = {
+  name: 'Hydrokrat Ventures',
+  place: 'Egmore, Chennai - 600 008',
+  phone: '+91 97900 25599 · +91 73388 25599',
+  email: 'hydrokratpumps@gmail.com'
+};
+const STORE_KEY = 'hydrokratkoel-order';
+
+const $ = (id) => document.getElementById(id);
+let groups = [];
+let loadedAt = null;
+const openGroups = new Set();
+const meta = new Map();          // item key -> { key, model, desc, qty (available), group }
+const cart = new Map();          // item key -> quantity wanted
+const badgeEls = new Map();      // group name -> badge element on screen
+let dealer = { name: '', mobile: '' };
+
+function make(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+
+// Text with the search term marked; built as nodes, so nothing is read as HTML.
+function marked(tag, cls, text, q) {
+  const n = make(tag, cls);
+  const at = q ? text.toLowerCase().indexOf(q) : -1;
+  if (at < 0) { n.textContent = text; return n; }
+  n.append(text.slice(0, at), make('mark', '', text.slice(at, at + q.length)), text.slice(at + q.length));
+  return n;
+}
+
+function saveOrder() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify({ items: Object.fromEntries(cart), dealer })); } catch (e) { /* storage may be blocked */ }
+}
+function savedOrder() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (e) { return {}; }
+}
+
+let toastTimer = 0;
+function flash(message) {
+  const t = $('toast');
+  t.textContent = message;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 2600);
+}
+
+// Sections follow the Varuna catalogue's product range, in the same order.
+const SECTIONS = [
+  'Borewell Submersible', 'Openwell Submersible', 'Mini and Self-priming Monoblock', 'Centrifugal Monoblock',
+  'Pressure Booster and Circulation', 'Sewage', 'Column Pipes', 'Motors', 'Control Panels', 'Other'
+];
+// Sections that get a heading per size or type; the others are short lists of well-known model names.
+const HEADED = new Set(['Borewell Submersible', 'Openwell Submersible', 'Centrifugal Monoblock', 'Sewage']);
+const INCH = { V3: '3 inch', V4: '4 inch', V5: '5 inch', V6: '6 inch', V7: '7 inch', V8: '8 inch', V9: '9 inch' };
+
+// Which section an item belongs to, from its product family (the text before the first " - ").
+function sectionFor(family, text) {
+  if (/control panel/i.test(text)) return 'Control Panels';
+  if (/Borewell Submersible/i.test(family)) return 'Borewell Submersible';
+  if (/Openwell/i.test(family)) return 'Openwell Submersible';
+  if (/^VSWA?\b|^AdvantACE/i.test(family)) return 'Mini and Self-priming Monoblock';
+  if (/^CMB/i.test(family)) return 'Centrifugal Monoblock';
+  if (/Booster|Circulation|Jet Pump/i.test(family)) return 'Pressure Booster and Circulation';
+  if (/Sewage/i.test(family)) return 'Sewage';
+  if (/Column Pipe/i.test(family)) return 'Column Pipes';
+  if (/Induction Motor/i.test(family)) return 'Motors';
+  if (/Monoblock|Self Priming/i.test(family)) return 'Mini and Self-priming Monoblock';
+  return 'Other';
+}
+
+// Heading shown inside a section: the borewell size ("4 inch · V4 · 100 mm"), otherwise the product family.
+function subFor(section, family) {
+  const m = family.match(/^(V\d)\s+Borewell Submersible Pumpset\s*\(([^)]*)\)/i);
+  if (section === 'Borewell Submersible' && m) {
+    const v = m[1].toUpperCase();
+    return `${INCH[v] || v} · ${v} · ${m[2].split(',')[0].trim()}`;
+  }
+  return family;
+}
+
+const natural = (a, b) => a.localeCompare(b, undefined, { numeric: true });
+
+// "KOEL Varuna <family> - <model> - <rating> - <stages>" -> section, family heading, model, details.
+function toGroups(rows) {
+  const bySection = new Map();
+  meta.clear();
+  rows.forEach(r => {
+    const text = String(r.item).replace(/^KOEL Varuna\s+/i, '');
+    const parts = text.split(' - ');
+    const section = sectionFor(parts[0], text);
+    let model = text, desc = '', sub = section;
+    if (parts.length >= 2) {
+      // Ratings and stages come last; whatever comes before them is the model, even when it contains " - ".
+      const rest = parts.slice(1);
+      let k = rest.length;
+      while (k > 1 && /\b(kW|HP|Stage)\b|^(Standard|Heavy) Duty$/.test(rest[k - 1])) k--;
+      model = rest.slice(0, k).join(' - ');
+      desc = rest.slice(k).join(' · ');
+      if (HEADED.has(section)) sub = subFor(section, parts[0]);
+    }
+    const item = { key: String(r.item), model, desc, qty: Number(r.quantity), group: section, sub };
+    if (!bySection.has(section)) bySection.set(section, []);
+    bySection.get(section).push(item);
+    meta.set(item.key, item);
+  });
+  return SECTIONS.filter(name => bySection.has(name)).map(name => ({
+    name,
+    items: bySection.get(name).sort((a, b) => natural(a.sub, b.sub) || natural(a.key, b.key))
+  }));
+}
+
+// ---- order list ----
+function cartTotals() {
+  let units = 0;
+  cart.forEach(n => { units += n; });
+  return { items: cart.size, units };
+}
+
+function updateBar() {
+  const { items, units } = cartTotals();
+  $('bar').hidden = items === 0;
+  document.body.classList.toggle('has-bar', items > 0);
+  $('barText').textContent = `${items} item${items === 1 ? '' : 's'} · ${units} unit${units === 1 ? '' : 's'} selected`;
+}
+
+function updateBadges() {
+  badgeEls.forEach((el, name) => {
+    const g = groups.find(x => x.name === name);
+    const n = g ? g.items.filter(it => cart.has(it.key)).length : 0;
+    el.hidden = n === 0;
+    el.textContent = `${n} selected`;
+  });
+}
+
+// Keeps the quantity between 0 and what is available; returns what was stored.
+function setQty(it, wanted) {
+  let n = Math.floor(Number(wanted)) || 0;
+  if (n > it.qty) { n = it.qty; flash(`Only ${it.qty} available for ${it.model}`); }
+  if (n < 0) n = 0;
+  if (n > 0) cart.set(it.key, n); else cart.delete(it.key);
+  saveOrder();
+  updateBar();
+  updateBadges();
+  return n;
+}
+
+// Minus / quantity / plus. `after` runs once the quantity has changed.
+function stepper(it, after) {
+  const box = make('div', 'step');
+  const minus = make('button', 'sbtn', '−');
+  const plus = make('button', 'sbtn', '+');
+  minus.type = plus.type = 'button';
+  minus.setAttribute('aria-label', `Decrease ${it.model}`);
+  plus.setAttribute('aria-label', `Increase ${it.model}`);
+  const input = make('input', 'sin');
+  input.type = 'number'; input.min = '0'; input.max = String(it.qty); input.step = '1';
+  input.inputMode = 'numeric'; input.placeholder = '0';
+  input.setAttribute('aria-label', `Order quantity for ${it.model}`);
+  const show = () => {
+    const n = cart.get(it.key) || 0;
+    input.value = n ? String(n) : '';
+    input.classList.toggle('on', n > 0);
+  };
+  const apply = (wanted) => { setQty(it, wanted); show(); if (after) after(); };
+  minus.addEventListener('click', () => apply((cart.get(it.key) || 0) - 1));
+  plus.addEventListener('click', () => apply((cart.get(it.key) || 0) + 1));
+  // While typing, keep what was typed (so the cursor stays); tidy the value when the box loses focus.
+  input.addEventListener('input', () => {
+    const typed = parseInt(input.value, 10) || 0;
+    setQty(it, typed);
+    if (typed > it.qty) input.value = String(it.qty);
+    input.classList.toggle('on', (cart.get(it.key) || 0) > 0);
+    if (after) after();
+  });
+  input.addEventListener('change', show);
+  show();
+  box.append(minus, input, plus);
+  return box;
+}
+
+// ---- stock register ----
+function render() {
+  const q = $('search').value.trim().toLowerCase();
+  const reg = $('register');
+  reg.textContent = '';
+  badgeEls.clear();
+  groups.forEach(g => {
+    const groupHit = q && g.name.toLowerCase().includes(q);
+    const items = g.items.filter(it => !q || groupHit || (it.model + ' ' + it.desc + ' ' + it.sub).toLowerCase().includes(q));
+    if (!items.length) return;
+    const section = make('section', 'group');
+    const isOpen = q ? true : openGroups.has(g.name);
+    const head = make('button', 'group-head');
+    head.type = 'button';
+    head.setAttribute('aria-expanded', String(isOpen));
+    const title = make('span', 'group-title');
+    const badge = make('span', 'picked');
+    badgeEls.set(g.name, badge);
+    title.append(marked('span', 'group-name', g.name, q), badge);
+    head.append(make('span', 'chev', '▶'), title,
+      make('span', 'num qty', String(g.items.reduce((n, it) => n + it.qty, 0))), make('span', 'pad'));
+    head.addEventListener('click', () => {
+      if (openGroups.has(g.name)) openGroups.delete(g.name); else openGroups.add(g.name);
+      render();
+    });
+    section.append(head);
+    if (isOpen) {
+      // A heading per size or family, only where a section has more than one.
+      const manySubs = new Set(items.map(it => it.sub)).size > 1;
+      let lastSub = null;
+      items.forEach(it => {
+        if (manySubs && it.sub !== lastSub) {
+          section.append(marked('div', 'sub-head', it.sub, q));
+          lastSub = it.sub;
+        }
+        const row = make('div', 'item-row');
+        const label = make('div');
+        label.append(marked('div', 'model', it.model, q));
+        if (it.desc) label.append(marked('div', 'desc', it.desc, q));
+        row.append(make('span'), label, make('span', 'num qty', String(it.qty)), stepper(it));
+        section.append(row);
+      });
+    }
+    reg.append(section);
+  });
+  if (!reg.children.length) {
+    const typed = $('search').value.trim();
+    reg.append(make('div', 'state', typed ? `Nothing matches "${typed}". Try a model such as Pearl or ULTRA.` : 'No stock available right now.'));
+  }
+  updateBadges();
+  $('toggle').textContent = groups.length && groups.every(g => openGroups.has(g.name)) ? 'Collapse all' : 'Expand all';
+}
+
+// ---- review dialog ----
+function closeReview() {
+  $('overlay').hidden = true;
+  $('overlay').textContent = '';
+  render();
+}
+
+function openReview() {
+  if (!cart.size) return;
+  const ov = $('overlay');
+  ov.textContent = '';
+  ov.hidden = false;
+  const box = make('div', 'dialog');
+  box.setAttribute('role', 'dialog');
+  box.setAttribute('aria-modal', 'true');
+  box.setAttribute('aria-label', 'Your order list');
+
+  const field = (id, label, key, placeholder) => {
+    const wrap = make('div', 'field');
+    const lab = make('label', '', label);
+    lab.htmlFor = id;
+    const input = make('input');
+    input.id = id; input.value = dealer[key] || ''; input.placeholder = placeholder; input.autocomplete = 'off';
+    input.addEventListener('input', () => { dealer[key] = input.value.trim(); saveOrder(); });
+    wrap.append(lab, input);
+    return wrap;
+  };
+  const fields = make('div', 'fields');
+  fields.append(field('dealerName', 'Dealer name', 'name', 'Your firm name'), field('dealerMobile', 'Mobile', 'mobile', 'Mobile number'));
+
+  const total = make('div', 'total');
+  const tbody = make('tbody');
+  const refresh = () => {
+    const t = cartTotals();
+    total.textContent = `Total: ${t.items} item${t.items === 1 ? '' : 's'}, ${t.units} unit${t.units === 1 ? '' : 's'}`;
+    if (!t.items) closeReview();
+  };
+  groups.flatMap(g => g.items).filter(it => cart.has(it.key)).forEach(it => {
+    const tr = make('tr');
+    const name = make('td');
+    name.append(make('div', 'model', it.model));
+    if (it.desc) name.append(make('div', 'desc', it.desc));
+    const qtyCell = make('td', 'q');
+    qtyCell.append(stepper(it, () => { if (!cart.has(it.key)) tr.remove(); refresh(); }));
+    tr.append(name, qtyCell);
+    tbody.append(tr);
+  });
+  const table = make('table', 'otable');
+  const headRow = make('tr');
+  headRow.append(make('th', '', 'Item'), make('th', '', 'Quantity'));
+  const thead = make('thead');
+  thead.append(headRow);
+  table.append(thead, tbody);
+
+  const actions = make('div', 'actions');
+  const print = make('button', 'btn-main', 'Print or save as PDF');
+  print.type = 'button';
+  print.addEventListener('click', printList);
+  const clear = make('button', 'btn-quiet', 'Clear list');
+  clear.type = 'button';
+  clear.addEventListener('click', () => { cart.clear(); saveOrder(); updateBar(); closeReview(); });
+  const close = make('button', 'btn-quiet', 'Back to stock');
+  close.type = 'button';
+  close.addEventListener('click', closeReview);
+  actions.append(print, make('span', 'spacer'), clear, close);
+
+  box.append(make('h2', '', 'Your order list'),
+    make('p', 'dlg-intro', 'Print this list or save it as a PDF, and send it to us with your purchase order. Quantities are as available now and may change.'),
+    fields, table, total, actions);
+  ov.append(box);
+  refresh();
+  $('dealerName').focus();
+}
+
+// ---- print sheet ----
+function buildSheet() {
+  // The logos live in the page from the start, so they are already loaded when printing begins.
+  $('sCo').textContent = [CONTACT.name, CONTACT.place, CONTACT.phone, CONTACT.email].join(' · ');
+  const s = $('sheetBody');
+  s.textContent = '';
+  const now = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+
+  const meta1 = make('div', 's-meta');
+  meta1.append(make('div', '', 'Date: ' + now));
+  if (dealer.name) meta1.append(make('div', '', 'Dealer: ' + dealer.name));
+  if (dealer.mobile) meta1.append(make('div', '', 'Mobile: ' + dealer.mobile));
+
+  const table = make('table');
+  const hr = make('tr');
+  ['No', 'Item', 'Qty'].forEach((t, i) => { const th = make('th', i === 2 ? 'r' : '', t); hr.append(th); });
+  const thead = make('thead'); thead.append(hr);
+  const tbody = make('tbody');
+  let n = 0, units = 0;
+  groups.flatMap(g => g.items).filter(it => cart.has(it.key)).forEach(it => {
+    n++; units += cart.get(it.key);
+    const tr = make('tr');
+    const name = make('td');
+    name.append(make('div', '', it.model + (it.group ? '  (' + it.group + ')' : '')));
+    if (it.desc) name.append(make('div', 'd', it.desc));
+    tr.append(make('td', '', String(n)), name, make('td', 'r', String(cart.get(it.key))));
+    tbody.append(tr);
+  });
+  const tot = make('tr', 's-total');
+  tot.append(make('td'), make('td', '', `Total: ${n} item${n === 1 ? '' : 's'}`), make('td', 'r', String(units)));
+  tbody.append(tot);
+  table.append(thead, tbody);
+
+  const note = make('div', 's-note',
+    `Order reference only, not a purchase order. Stock shown as on ${loadedAt || now} and may change before your order is confirmed. ` +
+    `Please send your purchase order to ${CONTACT.email} or call ${CONTACT.phone}, quoting this list.`);
+  s.append(make('h2', '', 'ORDER REFERENCE'), meta1, table, note);
+}
+
+async function printList() {
+  if (!cart.size) { flash('Add items first'); return; }
+  buildSheet();
+  // Print only once the logos are ready, so they are never missing from the page.
+  await Promise.all(Array.from($('sheet').querySelectorAll('img')).map(i => (i.decode ? i.decode().catch(() => {}) : null)));
+  window.print();
+}
+
+// ---- loading ----
+async function load() {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/public_stock_list`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_KEY, 'Content-Type': 'application/json' },
+      body: '{}'
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    groups = toGroups(await res.json());
+    loadedAt = new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+    $('updated').textContent = '· as on ' + loadedAt;
+    if (groups[0]) openGroups.add(groups[0].name);
+
+    // Bring back an unfinished list, keeping only items still in stock and no more than what is available.
+    const saved = savedOrder();
+    dealer = Object.assign({ name: '', mobile: '' }, saved.dealer || {});
+    Object.entries(saved.items || {}).forEach(([key, wanted]) => {
+      const it = meta.get(key);
+      const n = it ? Math.min(Math.floor(Number(wanted)) || 0, it.qty) : 0;
+      if (n > 0) cart.set(key, n);
+    });
+    updateBar();
+    render();
+  } catch (err) {
+    const box = $('register');
+    box.textContent = '';
+    box.append(make('div', 'state error', 'Could not load the stock list. Please check your internet connection and refresh this page.'));
+  }
+}
+
+$('search').addEventListener('input', () => { if (groups.length) render(); });
+$('toggle').addEventListener('click', () => {
+  const allOpen = groups.every(g => openGroups.has(g.name));
+  openGroups.clear();
+  if (!allOpen) groups.forEach(g => openGroups.add(g.name));
+  render();
+});
+$('review').addEventListener('click', openReview);
+$('overlay').addEventListener('click', (e) => { if (e.target === $('overlay')) closeReview(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('overlay').hidden) closeReview(); });
+// The print sheet reuses the logos already on the page, so each logo is stored in the file only once.
+document.querySelectorAll('#sheet img[data-logo]').forEach(img => {
+  const from = document.querySelector('.brandbar img[data-logo="' + img.dataset.logo + '"]');
+  if (from) img.src = from.src;
+});
+load();
+</script>
+</body>
+</html>

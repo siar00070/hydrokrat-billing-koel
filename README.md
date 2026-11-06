@@ -38,3 +38,9 @@ This produces an NSIS installer under `dist/`. Before building, replace `assets/
 - **Stock** — receive supplier purchase invoices (against a PO via "Receive Goods", or direct) with one serial number per unit, or fill it from the supplier's invoice PDF ("Upload Invoice PDF" reads items, qty, rate and serial ranges); Tax Invoices and Delivery Challans pick serials from stock (printed as "Sl. No"), and deleting them returns the units. Items with no serial numbers (e.g. control panels) are stocked by quantity and reduced automatically when sold. Pumps billed but not received can be marked Missing (then Received, Replaced with a new serial, or Written Off), and quantity-only items can be marked Short. The stock list downloads as Excel or PDF. Needs `db/migration_stock.sql`, `db/migration_stock_qty.sql` and `db/migration_stock_missing.sql` run once, in that order, in Supabase.
 - **Settings** — company details, bank details, and default Terms & Conditions per document type (pre-filled with Hydrokrat Ventures' details).
 - **GST logic** — automatically splits into CGST+SGST when the customer's state matches the company's state (Tamil Nadu), otherwise applies IGST.
+
+## Dealer stock page
+
+`docs/index.html` is the read-only stock page for dealers (sections from the Varuna catalogue, an order list they can print). It is **one self-contained file** with the logos built in, so uploading just that file to a free host such as Netlify is enough. It reads item names and quantities through the `public_stock_list()` database function (`db/migration_dealer_stock.sql`), so it needs no login and shows no prices, serial numbers or invoices.
+
+To change it, edit `dealer-page/index.src.html` (logos are in `dealer-page/img`) and run `node tools/build_dealer_page.js`, which rewrites `docs/index.html`.
