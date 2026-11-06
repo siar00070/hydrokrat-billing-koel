@@ -498,7 +498,11 @@ async function openPurchaseInvoiceModal(opts, onSaved) {
       }
       linesBody.appendChild(el('tr', {}, [
         el('td', { style: 'width:42%' }, [itemInput,
-          itemTitle ? el('div', { style: 'font-size:11px;color:#6b7280;margin-top:3px' }, [itemTitle]) : null].filter(Boolean)),
+          itemTitle ? el('div', { style: 'font-size:11px;color:#6b7280;margin-top:3px' }, [itemTitle]) : null,
+          // Pumps with serial numbers must be linked to a product, or dealers see them under "Other".
+          (itemTitle && !line.product_id && !line.noSerial)
+            ? el('div', { style: 'font-size:11.5px;color:#c0392b;font-weight:600;margin-top:3px' }, ['Not in your product list. Pick the right model from the list above.'])
+            : null].filter(Boolean)),
         el('td', {}, [qtyInput]),
         el('td', {}, [rateInput]),
         el('td', {}, line.noSerial
@@ -546,6 +550,13 @@ async function openPurchaseInvoiceModal(opts, onSaved) {
     if (!payload.lines.length) { showToast('Add at least one item'); return; }
     const bad = payload.lines.find(l => !l.no_serial && l.serials.length !== l.qty);
     if (bad) { showToast(`"${String(bad.description).split('\n')[0]}": enter exactly ${bad.qty} serial no(s), or tick "No serial no."`); return; }
+    const unlinked = payload.lines.filter(l => !l.product_id && !l.no_serial);
+    if (unlinked.length && !confirmDialog(
+      `${unlinked.length} item(s) are not in your product list:\n\n` +
+      unlinked.map(l => '• ' + String(l.description).split('\n')[0]).join('\n') +
+      '\n\nDealers will see them under "Other", and they will not match a catalogue model.\n\nSave anyway?')) {
+      return;
+    }
     saveBtn.disabled = true;
     try {
       const saved = await window.api.stock.createPurchaseInvoice(payload);

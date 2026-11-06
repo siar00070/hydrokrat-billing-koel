@@ -138,7 +138,7 @@ function registerIpc() {
   // Supplier invoice PDF -> purchase invoice draft (lines matched to Products, supplier matched by GSTIN/name).
   ipcMain.handle('stock:parse_invoice_pdf', async (e, bytes) => {
     const text = await extractPdfText(bytes);
-    if (text.replace(/s/g, '').length < 50) {
+    if (text.replace(/\s/g, '').length < 50) {
       throw new Error('No text found in this PDF (it looks like a scanned image). Please enter the invoice by hand.');
     }
     const draft = parseInvoiceText(text);
