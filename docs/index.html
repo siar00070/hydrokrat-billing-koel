@@ -50,6 +50,7 @@ input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); ou
 .picked { font-size: 12px; font-weight: 600; color: var(--on-accent); background: var(--accent); border-radius: 10px; padding: 1px 8px; }
 .chev { display: inline-block; color: var(--accent); font-size: 12px; transition: transform .12s; }
 [aria-expanded="true"] > .chev { transform: rotate(90deg); }
+.sub-head { border-top: 1px solid var(--line); padding: 8px 14px 6px 46px; font: 600 12px var(--body); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); background: var(--surface); }
 .item-row { border-top: 1px solid var(--line); padding-block: 9px; }
 .model { font-weight: 600; }
 .desc { color: var(--muted); font-size: 13px; }
@@ -117,6 +118,7 @@ mark { background: var(--mark); color: var(--mark-fg); border-radius: 2px; paddi
   .cols, .item-row, .group-head { grid-template-columns: 16px minmax(0, 1fr) 60px; gap: 6px 8px; padding-inline: 10px; }
   .cols { letter-spacing: .02em; font-size: 11.5px; }
   .cols span:last-child, .group-head .pad { display: none; }
+  .sub-head { padding-left: 34px; padding-right: 10px; }
   .item-row .step { grid-column: 2 / -1; justify-content: flex-start; }
   .sbtn { width: 28px; }
   .sin { width: 42px; }
@@ -236,28 +238,69 @@ function flash(message) {
   toastTimer = setTimeout(() => { t.hidden = true; }, 2600);
 }
 
-// "KOEL Varuna <family> - <model> - <rating> - <stages>" -> family, model, details.
+// Sections follow the Varuna catalogue's product range, in the same order.
+const SECTIONS = [
+  'Borewell Submersible', 'Openwell Submersible', 'Mini and Self-priming Monoblock', 'Centrifugal Monoblock',
+  'Pressure Booster and Circulation', 'Sewage', 'Column Pipes', 'Motors', 'Control Panels', 'Other'
+];
+// Sections that get a heading per size or type; the others are short lists of well-known model names.
+const HEADED = new Set(['Borewell Submersible', 'Openwell Submersible', 'Centrifugal Monoblock', 'Sewage']);
+const INCH = { V3: '3 inch', V4: '4 inch', V5: '5 inch', V6: '6 inch', V7: '7 inch', V8: '8 inch', V9: '9 inch' };
+
+// Which section an item belongs to, from its product family (the text before the first " - ").
+function sectionFor(family, text) {
+  if (/control panel/i.test(text)) return 'Control Panels';
+  if (/Borewell Submersible/i.test(family)) return 'Borewell Submersible';
+  if (/Openwell/i.test(family)) return 'Openwell Submersible';
+  if (/^VSWA?\b|^AdvantACE/i.test(family)) return 'Mini and Self-priming Monoblock';
+  if (/^CMB/i.test(family)) return 'Centrifugal Monoblock';
+  if (/Booster|Circulation|Jet Pump/i.test(family)) return 'Pressure Booster and Circulation';
+  if (/Sewage/i.test(family)) return 'Sewage';
+  if (/Column Pipe/i.test(family)) return 'Column Pipes';
+  if (/Induction Motor/i.test(family)) return 'Motors';
+  if (/Monoblock|Self Priming/i.test(family)) return 'Mini and Self-priming Monoblock';
+  return 'Other';
+}
+
+// Heading shown inside a section: the borewell size ("4 inch · V4 · 100 mm"), otherwise the product family.
+function subFor(section, family) {
+  const m = family.match(/^(V\d)\s+Borewell Submersible Pumpset\s*\(([^)]*)\)/i);
+  if (section === 'Borewell Submersible' && m) {
+    const v = m[1].toUpperCase();
+    return `${INCH[v] || v} · ${v} · ${m[2].split(',')[0].trim()}`;
+  }
+  return family;
+}
+
+const natural = (a, b) => a.localeCompare(b, undefined, { numeric: true });
+
+// "KOEL Varuna <family> - <model> - <rating> - <stages>" -> section, family heading, model, details.
 function toGroups(rows) {
-  const byName = new Map();
+  const bySection = new Map();
   meta.clear();
   rows.forEach(r => {
     const text = String(r.item).replace(/^KOEL Varuna\s+/i, '');
     const parts = text.split(' - ');
-    let family, model, desc;
+    const section = sectionFor(parts[0], text);
+    let model = text, desc = '', sub = section;
     if (parts.length >= 2) {
-      family = parts[0]; model = parts[1]; desc = parts.slice(2).join(' · ');
-    } else {
-      family = /control panel/i.test(text) ? 'Control Panels' : 'Other Items';
-      model = text; desc = '';
+      // Ratings and stages come last; whatever comes before them is the model, even when it contains " - ".
+      const rest = parts.slice(1);
+      let k = rest.length;
+      while (k > 1 && /\b(kW|HP|Stage)\b|^(Standard|Heavy) Duty$/.test(rest[k - 1])) k--;
+      model = rest.slice(0, k).join(' - ');
+      desc = rest.slice(k).join(' · ');
+      if (HEADED.has(section)) sub = subFor(section, parts[0]);
     }
-    if (!byName.has(family)) byName.set(family, []);
-    const item = { key: String(r.item), model, desc, qty: Number(r.quantity), group: family };
-    byName.get(family).push(item);
+    const item = { key: String(r.item), model, desc, qty: Number(r.quantity), group: section, sub };
+    if (!bySection.has(section)) bySection.set(section, []);
+    bySection.get(section).push(item);
     meta.set(item.key, item);
   });
-  return [...byName.entries()]
-    .map(([name, items]) => ({ name, items }))
-    .sort((a, b) => (a.name === 'Other Items') - (b.name === 'Other Items') || a.name.localeCompare(b.name));
+  return SECTIONS.filter(name => bySection.has(name)).map(name => ({
+    name,
+    items: bySection.get(name).sort((a, b) => natural(a.sub, b.sub) || natural(a.key, b.key))
+  }));
 }
 
 // ---- order list ----
@@ -337,7 +380,7 @@ function render() {
   badgeEls.clear();
   groups.forEach(g => {
     const groupHit = q && g.name.toLowerCase().includes(q);
-    const items = g.items.filter(it => !q || groupHit || (it.model + ' ' + it.desc).toLowerCase().includes(q));
+    const items = g.items.filter(it => !q || groupHit || (it.model + ' ' + it.desc + ' ' + it.sub).toLowerCase().includes(q));
     if (!items.length) return;
     const section = make('section', 'group');
     const isOpen = q ? true : openGroups.has(g.name);
@@ -355,14 +398,23 @@ function render() {
       render();
     });
     section.append(head);
-    if (isOpen) items.forEach(it => {
-      const row = make('div', 'item-row');
-      const label = make('div');
-      label.append(marked('div', 'model', it.model, q));
-      if (it.desc) label.append(marked('div', 'desc', it.desc, q));
-      row.append(make('span'), label, make('span', 'num qty', String(it.qty)), stepper(it));
-      section.append(row);
-    });
+    if (isOpen) {
+      // A heading per size or family, only where a section has more than one.
+      const manySubs = new Set(items.map(it => it.sub)).size > 1;
+      let lastSub = null;
+      items.forEach(it => {
+        if (manySubs && it.sub !== lastSub) {
+          section.append(marked('div', 'sub-head', it.sub, q));
+          lastSub = it.sub;
+        }
+        const row = make('div', 'item-row');
+        const label = make('div');
+        label.append(marked('div', 'model', it.model, q));
+        if (it.desc) label.append(marked('div', 'desc', it.desc, q));
+        row.append(make('span'), label, make('span', 'num qty', String(it.qty)), stepper(it));
+        section.append(row);
+      });
+    }
     reg.append(section);
   });
   if (!reg.children.length) {
