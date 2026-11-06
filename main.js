@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const { createSupabaseContext } = require('./db/supabaseClient');
 const { createRemoteStore, normalizeSerial, STOCK_OUT_TYPES } = require('./db/remoteStore');
 const { extractPdfText, parseInvoiceText, matchProduct } = require('./db/invoicePdf');
+const { buildStockWorkbook } = require('./db/stockExport');
 const { computeTotals } = require('./db/logic');
 const { createWorker } = require('tesseract.js');
 const { createLocalConfig } = require('./db/localConfig');
@@ -111,6 +112,19 @@ function registerIpc() {
   // Documents
   // Stock
   ipcMain.handle('stock:list_units', (e, search) => store.listStockUnits(search));
+  ipcMain.handle('stock:get_list', () => store.getStockList());
+  ipcMain.handle('stock:export_excel', async () => {
+    const date = new Date().toISOString().slice(0, 10);
+    const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
+      title: 'Download Stock List',
+      defaultPath: `HV-KOEL-Stock-List-${date}.xlsx`,
+      filters: [{ name: 'Excel', extensions: ['xlsx'] }]
+    });
+    if (canceled || !filePath) return { success: false };
+    const rows = await store.getStockList();
+    await buildStockWorkbook(ExcelJS, rows).xlsx.writeFile(filePath);
+    return { success: true, filePath };
+  });
   ipcMain.handle('stock:list_qty', (e, excludeDocIds) => store.listQtyStock(excludeDocIds));
   ipcMain.handle('stock:list_purchase_invoices', () => store.listPurchaseInvoices());
   ipcMain.handle('stock:create_purchase_invoice', (e, inv) => store.createPurchaseInvoice(inv));
@@ -192,7 +206,7 @@ function registerIpc() {
   });
 
   // PDF export / print
-  const OUTPUT_FOLDER_BY_TYPE = { quotation: 'QT', proforma: 'PI', tax_invoice: 'TI', delivery_challan: 'DC', purchase_order: 'PO', techno_commercial: 'TCO' };
+  const OUTPUT_FOLDER_BY_TYPE = { quotation: 'QT', proforma: 'PI', tax_invoice: 'TI', delivery_challan: 'DC', purchase_order: 'PO', techno_commercial: 'TCO', stock_list: 'Stock List' };
 
   // Completed documents go straight into D:\Hydrokrat KOEL Billing outputs\<QT|PI|TI|DC|PO|TCO>.
   // A PC without a D: drive falls back to Documents so saving never fails outright.
@@ -283,7 +297,7 @@ function registerIpc() {
       { header: 'Type', key: 'doc_type', width: 14 },
       { header: 'Number', key: 'doc_number', width: 18 },
       { header: 'Date', key: 'doc_date', width: 14 },
-      { header: 'Customer', key: 'customer_name', width: 28 },
+      { header: 'Dealer', key: 'customer_name', width: 28 },
       { header: 'Branch', key: 'branch_name', width: 14 },
       { header: 'Subtotal', key: 'subtotal', width: 14 },
       { header: 'CGST', key: 'cgst', width: 12 },
@@ -373,14 +387,14 @@ function registerIpc() {
   ipcMain.handle('export:customers_excel', async () => {
     const rows = await store.listCustomers();
     const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
-      title: 'Export Customers to Excel',
-      defaultPath: 'HV-KOEL-Customers.xlsx',
+      title: 'Export Dealers to Excel',
+      defaultPath: 'HV-KOEL-Dealers.xlsx',
       filters: [{ name: 'Excel', extensions: ['xlsx'] }]
     });
     if (canceled || !filePath) return { success: false };
 
     const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet('Customers');
+    const ws = wb.addWorksheet('Dealers');
     ws.columns = [
       { header: 'Name', key: 'name', width: 28 },
       { header: 'Address', key: 'address', width: 32 },

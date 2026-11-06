@@ -62,7 +62,7 @@ async function renderDashboard(root) {
       ])
     ]);
     const table = el('table', { class: 'data-table', style: 'margin-top:10px' }, [
-      el('thead', {}, [el('tr', {}, [el('th', {}, ['Number']), el('th', {}, ['Customer']), el('th', {}, ['Due Date']), el('th', {}, ['Amount']), el('th', {}, [''])])])
+      el('thead', {}, [el('tr', {}, [el('th', {}, ['Number']), el('th', {}, ['Dealer']), el('th', {}, ['Due Date']), el('th', {}, ['Amount']), el('th', {}, [''])])])
     ]);
     const tbody = el('tbody');
     summary.outstanding.forEach(d => {
@@ -91,7 +91,7 @@ async function renderDashboard(root) {
       el('p', { style: 'font-size:11.5px;color:#6b7280;margin-top:-6px' }, ['Expiring within 7 days or already past their Valid Until date.'])
     ]);
     const table = el('table', { class: 'data-table', style: 'margin-top:6px' }, [
-      el('thead', {}, [el('tr', {}, [el('th', {}, ['Number']), el('th', {}, ['Customer']), el('th', {}, ['Valid Until']), el('th', {}, ['Amount']), el('th', {}, [''])])])
+      el('thead', {}, [el('tr', {}, [el('th', {}, ['Number']), el('th', {}, ['Dealer']), el('th', {}, ['Valid Until']), el('th', {}, ['Amount']), el('th', {}, [''])])])
     ]);
     const tbody = el('tbody');
     summary.quotationFollowUps.forEach(d => {
@@ -144,7 +144,7 @@ async function renderDashboard(root) {
       return;
     }
     const table = el('table', { class: 'data-table' }, [
-      el('thead', {}, [el('tr', {}, [el('th', {}, ['Number']), el('th', {}, ['Date']), el('th', {}, ['Customer']), el('th', {}, ['Total']), el('th', {}, [''])])])
+      el('thead', {}, [el('tr', {}, [el('th', {}, ['Number']), el('th', {}, ['Date']), el('th', {}, ['Dealer']), el('th', {}, ['Total']), el('th', {}, [''])])])
     ]);
     const tbody = el('tbody');
     typeDocs.forEach(d => {

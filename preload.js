@@ -35,6 +35,8 @@ contextBridge.exposeInMainWorld('api', {
   },
   stock: {
     listUnits: (search) => ipcRenderer.invoke('stock:list_units', search),
+    getList: () => ipcRenderer.invoke('stock:get_list'),
+    exportExcel: () => ipcRenderer.invoke('stock:export_excel'),
     listQty: (excludeDocIds) => ipcRenderer.invoke('stock:list_qty', excludeDocIds),
     listPurchaseInvoices: () => ipcRenderer.invoke('stock:list_purchase_invoices'),
     markUnitMissing: (id, note) => ipcRenderer.invoke('stock:mark_unit_missing', id, note),

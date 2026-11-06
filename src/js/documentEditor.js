@@ -101,13 +101,13 @@ async function renderDocumentEditor(root, params) {
   const dateInput = el('input', { type: 'date', value: state.docDate });
   const validUntilInput = el('input', { type: 'date', value: state.validUntil || '' });
   const placeOfSupplySelect = el('select', {}, [
-    el('option', { value: '' }, [isPO ? 'Same as supplier state' : 'Same as customer state']),
+    el('option', { value: '' }, [isPO ? 'Same as supplier state' : 'Same as dealer state']),
     ...INDIAN_STATES.map(s => el('option', { value: s, ...(state.placeOfSupply === s ? { selected: 'selected' } : {}) }, [s]))
   ]);
 
   const metaRow = el('div', { class: 'field-row' }, [
     el('div', { class: 'field' }, [
-      el('label', {}, [isPO ? 'Supplier' : 'Customer']),
+      el('label', {}, [isPO ? 'Supplier' : 'Dealer']),
       isPO ? supplierSelect : customerSelect
     ])
   ]);
@@ -715,7 +715,7 @@ async function renderDocumentEditor(root, params) {
       const items = state.items.filter(it => it.description && it.description.trim());
       if (items.length === 0) { showToast('Add at least one item'); return; }
       if (isPO ? !supplierSelect.value : !customerSelect.value) {
-        showToast(isPO ? 'Please select a supplier' : 'Please select a customer');
+        showToast(isPO ? 'Please select a supplier' : 'Please select a dealer');
         return;
       }
       const payload = {
@@ -878,7 +878,7 @@ async function openPreview(docId) {
 
 function buildCustomerOptions(customers, selectedId) {
   return [
-    el('option', { value: '' }, ['Select a customer']),
+    el('option', { value: '' }, ['Select a dealer']),
     ...customers.map(c => el('option', {
       value: c.id, ...(selectedId && String(selectedId) === String(c.id) ? { selected: 'selected' } : {})
     }, [c.name]))

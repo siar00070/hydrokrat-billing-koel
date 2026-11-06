@@ -56,6 +56,49 @@ function openStockDialog({ title, intro, fields, submitLabel }, onSubmit) {
   if (fields.length) inputs[fields[0].key].focus();
 }
 
+function buildStockListHtml(rows) {
+  const today = fmtDate(new Date().toISOString().slice(0, 10));
+  const totalQty = rows.reduce((n, r) => n + r.qty, 0);
+  const totalMissing = rows.reduce((n, r) => n + r.missing, 0);
+  const body = rows.map(r => `<tr>
+    <td>${esc(r.description)}</td>
+    <td>${esc(r.hsn_sac)}</td>
+    <td class="num">${r.qty}</td>
+    <td class="num missing">${r.missing || ''}</td>
+    <td class="serials">${r.no_serial ? '<span class="muted">No serial no.</span>' : esc(r.serials.join(', '))}</td>
+  </tr>`).join('');
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Stock List</title><style>
+    @page { size: A4 landscape; margin: 12mm; }
+    body { font-family: Arial, sans-serif; color: #1f2937; font-size: 11px; margin: 0; }
+    .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .head img { height: 44px; }
+    h1 { font-size: 18px; color: #0e3a5f; margin: 0; text-align: right; }
+    .date { text-align: right; color: #6b7280; margin-top: 2px; }
+    table { width: 100%; border-collapse: collapse; }
+    thead { display: table-header-group; }
+    th { background: #0e3a5f; color: #fff; text-align: left; padding: 6px 8px; font-size: 10.5px; }
+    td { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; vertical-align: top; word-break: break-word; }
+    tr { page-break-inside: avoid; }
+    .num { text-align: right; white-space: nowrap; }
+    .missing { color: #c0392b; font-weight: 700; }
+    .serials { font-size: 9.5px; }
+    .muted { color: #6b7280; }
+    .total td { font-weight: 700; border-top: 2px solid #0e3a5f; }
+  </style></head><body>
+    <div class="head">
+      ${typeof HV_LOGO_DATA_URI !== 'undefined' ? `<img src="${HV_LOGO_DATA_URI}" alt="Hydrokrat Ventures">` : ''}
+      <div><h1>Stock List</h1><div class="date">As on ${esc(today)}</div></div>
+    </div>
+    <table>
+      <colgroup><col style="width:36%"><col style="width:8%"><col style="width:6%"><col style="width:6%"><col style="width:44%"></colgroup>
+      <thead><tr><th>Item</th><th>HSN</th><th class="num">Qty</th><th class="num">Missing</th><th>Serial Nos</th></tr></thead>
+      <tbody>${body || '<tr><td colspan="5">Nothing in stock.</td></tr>'}
+        <tr class="total"><td>Total</td><td></td><td class="num">${totalQty}</td><td class="num missing">${totalMissing || ''}</td><td></td></tr>
+      </tbody>
+    </table>
+  </body></html>`;
+}
+
 async function renderStock(root) {
   root.appendChild(el('h1', { class: 'page-title' }, ['Stock']));
 
@@ -66,6 +109,20 @@ async function renderStock(root) {
   const searchInput = el('input', { placeholder: 'Search serial no. or item...' });
   searchRow.appendChild(searchInput);
   searchRow.appendChild(el('button', { class: 'btn', onclick: () => openPurchaseInvoiceModal({}, load) }, ['+ Add Purchase Invoice']));
+  searchRow.appendChild(el('button', { class: 'btn secondary', onclick: async () => {
+    try {
+      const r = await window.api.stock.exportExcel();
+      if (r.success) showToast('Excel saved: ' + r.filePath);
+    } catch (err) { showToast(stockErrorText(err)); }
+  } }, ['⬇️ Excel']));
+  searchRow.appendChild(el('button', { class: 'btn secondary', onclick: async () => {
+    try {
+      const rows = await window.api.stock.getList();
+      const date = new Date().toISOString().slice(0, 10);
+      const r = await window.api.document.savePdf(buildStockListHtml(rows), `Stock List ${date}`, 'stock_list');
+      if (r.success) showToast('PDF saved: ' + r.filePath);
+    } catch (err) { showToast(stockErrorText(err)); }
+  } }, ['⬇️ PDF']));
   const card = el('div', { class: 'card' });
   root.appendChild(tabRow);
   root.appendChild(searchRow);

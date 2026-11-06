@@ -297,6 +297,32 @@ function createRemoteStore(client, numberingClient = client) {
         return q.range(from, to);
       });
     },
+    // What is on the shelf right now, per item, for the stock list download.
+    // No purchase rates, so the list is safe to forward.
+    async getStockList() {
+      const [units, qtyRows] = await Promise.all([this.listStockUnits(), this.listQtyStock()]);
+      const rows = new Map();
+      units.filter(u => !u.out_document_id && (isUnitAvailable(u) || u.issue_status === 'missing')).forEach(u => {
+        const key = u.product_id ? 'p' + u.product_id : 'd' + u.description;
+        if (!rows.has(key)) rows.set(key, { description: String(u.description).split('\n')[0], hsn_sac: u.hsn_sac || '', qty: 0, missing: 0, serials: [], serial_rows: [] });
+        const row = rows.get(key);
+        if (u.issue_status === 'missing') { row.missing++; return; }
+        row.qty++;
+        row.serials.push(u.serial_no);
+        const inv = u.purchase_invoices || {};
+        row.serial_rows.push({
+          serial_no: u.serial_no, description: row.description, invoice_no: inv.invoice_no || '', invoice_date: inv.invoice_date || '',
+          supplier: inv.supplier_snapshot ? inv.supplier_snapshot.name : ''
+        });
+      });
+      qtyRows.filter(r => r.balance > 0 || r.missing > 0).forEach(r => {
+        rows.set('q' + r.product_id, {
+          description: String(r.description).split('\n')[0], hsn_sac: r.hsn_sac || '', qty: Math.max(0, r.balance), missing: r.missing,
+          serials: [], serial_rows: [], no_serial: true
+        });
+      });
+      return [...rows.values()].sort((a, b) => a.description.localeCompare(b.description));
+    },
     async syncDocumentQty(docId) {
       unwrap(await client.rpc('sync_document_qty', { p_doc_id: docId }));
     },
@@ -304,13 +330,13 @@ function createRemoteStore(client, numberingClient = client) {
     // being edited (or the Delivery Challan a Tax Invoice came from) isn't counted against itself.
     async listQtyStock(excludeDocIds) {
       const [lots, outs] = await Promise.all([
-        fetchAllRows((from, to) => client.from('stock_lots').select('product_id, description, qty, short_qty, short_written_off').order('id').range(from, to)),
+        fetchAllRows((from, to) => client.from('stock_lots').select('product_id, description, hsn_sac, qty, short_qty, short_written_off').order('id').range(from, to)),
         fetchAllRows((from, to) => client.from('stock_qty_out').select('document_id, product_id, qty').order('document_id').order('product_id').range(from, to))
       ]);
       const skip = new Set(excludeDocIds || []);
       const byProduct = new Map();
       lots.forEach(l => {
-        if (!byProduct.has(l.product_id)) byProduct.set(l.product_id, { product_id: l.product_id, description: l.description, received: 0, out: 0, missing: 0 });
+        if (!byProduct.has(l.product_id)) byProduct.set(l.product_id, { product_id: l.product_id, description: l.description, hsn_sac: l.hsn_sac, received: 0, out: 0, missing: 0 });
         const row = byProduct.get(l.product_id);
         row.received += lotArrived(l);
         row.missing += Number(l.short_qty) || 0;

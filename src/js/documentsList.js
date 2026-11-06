@@ -63,7 +63,7 @@ async function renderDocumentsList(root) {
   let showTrash = false;
 
   const searchRow = el('div', { class: 'search-row' });
-  const searchInput = el('input', { placeholder: 'Search by number or customer...' });
+  const searchInput = el('input', { placeholder: 'Search by number or dealer...' });
   searchRow.appendChild(searchInput);
   const trashBtn = el('button', {
     class: 'btn secondary',
@@ -98,7 +98,7 @@ async function renderDocumentsList(root) {
       const table = el('table', { class: 'data-table' }, [
         el('thead', {}, [el('tr', {}, [
           el('th', {}, ['Type']), el('th', {}, ['Number']), el('th', {}, ['Date']),
-          el('th', {}, ['Customer']), el('th', {}, ['Branch']), el('th', {}, ['Total']), el('th', {}, [''])
+          el('th', {}, ['Dealer']), el('th', {}, ['Branch']), el('th', {}, ['Total']), el('th', {}, [''])
         ])])
       ]);
       const tbody = el('tbody');
@@ -149,7 +149,7 @@ async function renderDocumentsList(root) {
       ]);
       const headerCells = [
         el('th', {}, ['Number']), el('th', {}, ['Date']),
-        el('th', {}, [type === 'purchase_order' ? 'Supplier' : 'Customer']), el('th', {}, ['Branch']), el('th', {}, ['Total'])
+        el('th', {}, [type === 'purchase_order' ? 'Supplier' : 'Dealer']), el('th', {}, ['Branch']), el('th', {}, ['Total'])
       ];
       if (type === 'tax_invoice') headerCells.push(el('th', {}, ['Payment']));
       headerCells.push(el('th', {}, ['']));
@@ -297,7 +297,7 @@ async function renderDocumentsList(root) {
     const box = el('div', { class: 'modal-box' }, [
       el('h3', {}, ['Export GSTR-1 (B2B) Report']),
       el('p', { style: 'font-size:11.5px;color:#6b7280;margin-top:-8px' }, [
-        'Only Tax Invoices with a customer GSTIN are included (B2B) — matches the GST offline utility\'s "b2b" sheet format for direct import into Tally or the GST portal.'
+        'Only Tax Invoices with a dealer GSTIN are included (B2B) — matches the GST offline utility\'s "b2b" sheet format for direct import into Tally or the GST portal.'
       ]),
       el('div', { class: 'field-row' }, [
         el('div', { class: 'field' }, [el('label', {}, ['From']), fromInput]),
@@ -308,7 +308,7 @@ async function renderDocumentsList(root) {
           const r = await window.api.exportExcel.gstr1({ from: fromInput.value, to: toInput.value });
           if (r.success) {
             overlay.remove();
-            showToast(`Exported: ${r.filePath}` + (r.skippedNoGstin ? ` (${r.skippedNoGstin} invoice(s) skipped — no customer GSTIN)` : ''));
+            showToast(`Exported: ${r.filePath}` + (r.skippedNoGstin ? ` (${r.skippedNoGstin} invoice(s) skipped — no dealer GSTIN)` : ''));
           }
         } }, ['Export']),
         el('button', { class: 'btn secondary', onclick: () => overlay.remove() }, ['Cancel'])

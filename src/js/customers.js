@@ -1,5 +1,5 @@
 async function renderCustomers(root, params) {
-  root.appendChild(el('h1', { class: 'page-title' }, ['Customers']));
+  root.appendChild(el('h1', { class: 'page-title' }, ['Dealers']));
 
   const searchRow = el('div', { class: 'search-row' });
   const searchInput = el('input', { placeholder: 'Search by name or GSTIN...' });
@@ -11,7 +11,7 @@ async function renderCustomers(root, params) {
       if (r.success) showToast('Exported: ' + r.filePath);
     }
   }, ['⬇ Export to Excel']));
-  searchRow.appendChild(el('button', { class: 'btn', onclick: () => openCustomerModal(null, load) }, ['+ Add Customer']));
+  searchRow.appendChild(el('button', { class: 'btn', onclick: () => openCustomerModal(null, load) }, ['+ Add Dealer']));
   root.appendChild(searchRow);
 
   const card = el('div', { class: 'card' });
@@ -21,7 +21,7 @@ async function renderCustomers(root, params) {
     card.innerHTML = '';
     const list = await window.api.customers.list(searchInput.value.trim());
     if (list.length === 0) {
-      card.appendChild(el('div', { class: 'empty-state' }, ['No customers found.']));
+      card.appendChild(el('div', { class: 'empty-state' }, ['No dealers found.']));
       return;
     }
     const table = el('table', { class: 'data-table' }, [
@@ -41,9 +41,9 @@ async function renderCustomers(root, params) {
           el('div', { class: 'btn-row' }, [
             el('span', { class: 'btn small secondary', onclick: () => openCustomerModal(c, load) }, ['Edit']),
             el('span', { class: 'btn small danger', onclick: async () => {
-              if (confirmDialog(`Delete customer "${c.name}"?`)) {
+              if (confirmDialog(`Delete dealer "${c.name}"?`)) {
                 await window.api.customers.delete(c.id);
-                showToast('Customer deleted');
+                showToast('Dealer deleted');
                 load();
               }
             } }, ['Delete'])
@@ -105,7 +105,7 @@ function openCustomerModal(customer, onSaved) {
   }, ['📷 Scan to fill (business card / GST certificate)']);
 
   const box = el('div', { class: 'modal-box' }, [
-    el('h3', {}, [isEdit ? 'Edit Customer' : 'Add Customer']),
+    el('h3', {}, [isEdit ? 'Edit Dealer' : 'Add Dealer']),
     scanBtn,
     el('div', { class: 'field' }, [el('label', {}, ['Name']), nameInput]),
     el('div', { class: 'field' }, [el('label', {}, ['Address']), addressInput]),
@@ -133,7 +133,7 @@ function openCustomerModal(customer, onSaved) {
         if (isEdit) await window.api.customers.update(customer.id, payload);
         else await window.api.customers.create(payload);
         overlay.remove();
-        showToast('Customer saved');
+        showToast('Dealer saved');
         if (onSaved) onSaved();
       } }, ['Save']),
       el('button', { class: 'btn secondary', onclick: () => overlay.remove() }, ['Cancel'])
