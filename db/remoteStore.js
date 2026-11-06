@@ -7,7 +7,21 @@ const PREFIXES = { quotation: 'QT-HV', proforma: 'PI-HV', tax_invoice: 'TI-HV', 
 const STOCK_OUT_TYPES = ['tax_invoice', 'delivery_challan'];
 
 function normalizeSerial(s) {
-  return String(s || '').trim().replace(/s+/g, ' ').toUpperCase();
+  return String(s || '').trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
+// Units that are physically with us (or were sold): not missing, replaced or written off.
+function isUnitAvailable(unit) {
+  return !unit.issue_status || unit.issue_status === 'received';
+}
+
+// How much of a quantity-only lot actually arrived.
+function lotArrived(lot) {
+  return Number(lot.qty) - (Number(lot.short_qty) || 0) - (Number(lot.short_written_off) || 0);
+}
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function createRemoteStore(client, numberingClient = client) {
@@ -290,14 +304,16 @@ function createRemoteStore(client, numberingClient = client) {
     // being edited (or the Delivery Challan a Tax Invoice came from) isn't counted against itself.
     async listQtyStock(excludeDocIds) {
       const [lots, outs] = await Promise.all([
-        fetchAllRows((from, to) => client.from('stock_lots').select('product_id, description, qty').order('id').range(from, to)),
+        fetchAllRows((from, to) => client.from('stock_lots').select('product_id, description, qty, short_qty, short_written_off').order('id').range(from, to)),
         fetchAllRows((from, to) => client.from('stock_qty_out').select('document_id, product_id, qty').order('document_id').order('product_id').range(from, to))
       ]);
       const skip = new Set(excludeDocIds || []);
       const byProduct = new Map();
       lots.forEach(l => {
-        if (!byProduct.has(l.product_id)) byProduct.set(l.product_id, { product_id: l.product_id, description: l.description, received: 0, out: 0 });
-        byProduct.get(l.product_id).received += Number(l.qty);
+        if (!byProduct.has(l.product_id)) byProduct.set(l.product_id, { product_id: l.product_id, description: l.description, received: 0, out: 0, missing: 0 });
+        const row = byProduct.get(l.product_id);
+        row.received += lotArrived(l);
+        row.missing += Number(l.short_qty) || 0;
       });
       outs.forEach(o => {
         if (byProduct.has(o.product_id) && !skip.has(o.document_id)) byProduct.get(o.product_id).out += Number(o.qty);
@@ -308,14 +324,15 @@ function createRemoteStore(client, numberingClient = client) {
     },
     async listPurchaseInvoices() {
       const rows = unwrap(await client.from('purchase_invoices')
-        .select('*, stock_units(id, out_document_id), stock_lots(qty)')
+        .select('*, stock_units(id, out_document_id, issue_status), stock_lots(qty, short_qty)')
         .order('invoice_date', { ascending: false }).order('id', { ascending: false }));
       return rows.map(({ stock_units: units, stock_lots: lots, ...inv }) => ({
         ...inv,
         supplier_name: inv.supplier_snapshot ? inv.supplier_snapshot.name : null,
-        unit_count: units.length,
-        in_stock_count: units.filter(u => !u.out_document_id).length,
-        qty_only_count: lots.reduce((n, l) => n + Number(l.qty), 0)
+        unit_count: units.filter(u => u.issue_status !== 'replaced').length,
+        in_stock_count: units.filter(u => !u.out_document_id && isUnitAvailable(u)).length,
+        qty_only_count: lots.reduce((n, l) => n + Number(l.qty), 0),
+        missing_count: units.filter(u => u.issue_status === 'missing').length + lots.reduce((n, l) => n + (Number(l.short_qty) || 0), 0)
       }));
     },
     // inv: { supplier_id, po_document_id, invoice_no, invoice_date, notes,
@@ -327,6 +344,13 @@ function createRemoteStore(client, numberingClient = client) {
       const all = lines.flatMap(l => l.serials);
       if (!inv.invoice_no || !inv.invoice_date) throw new Error('Invoice number and date are required');
       if (all.length === 0 && qtyLines.length === 0) throw new Error('Add at least one item');
+      lines.forEach(l => {
+        const title = String(l.description || '').split('\n')[0];
+        l.missing_serials = l.no_serial ? [] : [...new Set((l.missing_serials || []).map(normalizeSerial).filter(Boolean))];
+        const notOnLine = l.missing_serials.filter(s => !l.serials.includes(s));
+        if (notOnLine.length) throw new Error(`"${title}": missing serial not on this line: ${notOnLine.join(', ')}`);
+        if (l.no_serial && (Number(l.short_qty) || 0) > Number(l.qty)) throw new Error(`"${title}": short quantity is more than the quantity`);
+      });
       // Quantity-only lines have no serial to catch a repeat upload, so check the invoice itself.
       let sameInvoice = client.from('purchase_invoices').select('id').eq('invoice_no', String(inv.invoice_no).trim());
       if (inv.supplier_id) sameInvoice = sameInvoice.eq('supplier_id', inv.supplier_id);
@@ -367,11 +391,15 @@ function createRemoteStore(client, numberingClient = client) {
       const units = lines.flatMap(l => l.serials.map(serial => ({
         purchase_invoice_id: header.id, product_id: l.product_id || null,
         description: l.description, hsn_sac: l.hsn_sac || null, serial_no: serial,
-        purchase_rate: Number(l.rate) || 0, created_by: uid
+        purchase_rate: Number(l.rate) || 0, created_by: uid,
+        ...(l.missing_serials.includes(serial)
+          ? { issue_status: 'missing', issue_note: l.issue_note || null, issue_date: today() } : {})
       })));
       const lots = qtyLines.map(l => ({
         purchase_invoice_id: header.id, product_id: l.product_id, description: l.description,
-        hsn_sac: l.hsn_sac || null, qty: Number(l.qty), purchase_rate: Number(l.rate) || 0, created_by: uid
+        hsn_sac: l.hsn_sac || null, qty: Number(l.qty), purchase_rate: Number(l.rate) || 0, created_by: uid,
+        ...(Number(l.short_qty) > 0
+          ? { short_qty: Number(l.short_qty), short_note: l.issue_note || null, short_date: today() } : {})
       }));
       try {
         if (units.length) unwrap(await client.from('stock_units').insert(units));
@@ -382,15 +410,82 @@ function createRemoteStore(client, numberingClient = client) {
       }
       return { ...header, unit_count: units.length + lots.reduce((n, l) => n + l.qty, 0) };
     },
+    // ---- Missing stock ----
+    async markUnitMissing(id, note) {
+      const unit = unwrap(await client.from('stock_units').select('serial_no, out_document_id, issue_status').eq('id', id).single());
+      if (unit.out_document_id) throw new Error(`${unit.serial_no} is already on a document, so it cannot be marked missing`);
+      if (!isUnitAvailable(unit)) throw new Error(`${unit.serial_no} is already marked ${String(unit.issue_status).replace('_', ' ')}`);
+      return unwrap(await client.from('stock_units').update({
+        issue_status: 'missing', issue_note: note || null, issue_date: today(), issue_resolved_at: null,
+        updated_at: new Date().toISOString()
+      }).eq('id', id).select().single());
+    },
+    // action: 'received' (same unit arrived) or 'written_off' (will not come).
+    async resolveUnit(id, action) {
+      if (!['received', 'written_off'].includes(action)) throw new Error('Unknown action');
+      const unit = unwrap(await client.from('stock_units').select('serial_no, issue_status').eq('id', id).single());
+      if (unit.issue_status !== 'missing') throw new Error(`${unit.serial_no} is not marked missing`);
+      const now = new Date().toISOString();
+      return unwrap(await client.from('stock_units').update({ issue_status: action, issue_resolved_at: now, updated_at: now })
+        .eq('id', id).select().single());
+    },
+    // The supplier sent a different unit: it joins stock on the same invoice; the old serial stays as a record.
+    async replaceUnit(id, newSerial) {
+      const uid = await currentUserId();
+      const serial = normalizeSerial(newSerial);
+      if (!serial) throw new Error('Enter the new serial number');
+      const old = unwrap(await client.from('stock_units').select('*').eq('id', id).single());
+      if (old.issue_status !== 'missing') throw new Error(`${old.serial_no} is not marked missing`);
+      const clash = unwrap(await client.from('stock_units').select('id').eq('serial_no', serial));
+      if (clash.length) throw new Error(`${serial} is already in the system`);
+      const created = unwrap(await client.from('stock_units').insert({
+        purchase_invoice_id: old.purchase_invoice_id, product_id: old.product_id, description: old.description,
+        hsn_sac: old.hsn_sac, serial_no: serial, purchase_rate: old.purchase_rate,
+        replaces_serial: old.serial_no, created_by: uid
+      }).select().single());
+      const now = new Date().toISOString();
+      unwrap(await client.from('stock_units').update({
+        issue_status: 'replaced', replaced_by_serial: serial, issue_resolved_at: now, updated_at: now
+      }).eq('id', id));
+      return created;
+    },
+    async listStockLots() {
+      return fetchAllRows((from, to) => client.from('stock_lots')
+        .select('*, purchase_invoices(invoice_no, invoice_date, supplier_snapshot)')
+        .order('id').range(from, to));
+    },
+    async markLotShort(id, qty, note) {
+      const n = Number(qty);
+      if (!(n > 0)) throw new Error('Enter how many are short');
+      const lot = unwrap(await client.from('stock_lots').select('*').eq('id', id).single());
+      const title = String(lot.description).split('\n')[0];
+      if (n > lotArrived(lot)) throw new Error(`"${title}": only ${lotArrived(lot)} on this invoice line can be marked short`);
+      const row = (await this.listQtyStock()).find(r => r.product_id === lot.product_id);
+      if (row && n > row.balance) throw new Error(`"${title}": only ${Math.max(0, row.balance)} left in stock; the rest are already sold or delivered`);
+      return unwrap(await client.from('stock_lots').update({
+        short_qty: (Number(lot.short_qty) || 0) + n, short_note: note || lot.short_note, short_date: today()
+      }).eq('id', id).select().single());
+    },
+    // action: 'received' or 'written_off', for qty of the units still short.
+    async resolveLotShort(id, action, qty) {
+      if (!['received', 'written_off'].includes(action)) throw new Error('Unknown action');
+      const lot = unwrap(await client.from('stock_lots').select('*').eq('id', id).single());
+      const pending = Number(lot.short_qty) || 0;
+      const n = Number(qty);
+      if (!(n > 0) || n > pending) throw new Error(`Enter a quantity from 1 to ${pending}`);
+      const key = action === 'received' ? 'short_received' : 'short_written_off';
+      return unwrap(await client.from('stock_lots').update({ short_qty: pending - n, [key]: (Number(lot[key]) || 0) + n })
+        .eq('id', id).select().single());
+    },
     async deletePurchaseInvoice(id) {
       const used = unwrap(await client.from('stock_units').select('serial_no').eq('purchase_invoice_id', id).not('out_document_id', 'is', null));
       if (used.length) throw new Error(`Cannot delete — already sold/delivered: ${used.map(u => u.serial_no).join(', ')}`);
-      const lots = unwrap(await client.from('stock_lots').select('product_id, description, qty').eq('purchase_invoice_id', id));
+      const lots = unwrap(await client.from('stock_lots').select('product_id, description, qty, short_qty, short_written_off').eq('purchase_invoice_id', id));
       if (lots.length) {
         const stock = await this.listQtyStock();
         const short = lots.find(l => {
           const row = stock.find(r => r.product_id === l.product_id);
-          return row && row.balance < Number(l.qty);
+          return row && row.balance < lotArrived(l);
         });
         if (short) throw new Error(`Cannot delete — some of "${String(short.description).split('\n')[0]}" have already been sold/delivered`);
       }

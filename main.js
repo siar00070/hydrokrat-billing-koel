@@ -114,6 +114,12 @@ function registerIpc() {
   ipcMain.handle('stock:list_qty', (e, excludeDocIds) => store.listQtyStock(excludeDocIds));
   ipcMain.handle('stock:list_purchase_invoices', () => store.listPurchaseInvoices());
   ipcMain.handle('stock:create_purchase_invoice', (e, inv) => store.createPurchaseInvoice(inv));
+  ipcMain.handle('stock:mark_unit_missing', (e, id, note) => store.markUnitMissing(id, note));
+  ipcMain.handle('stock:resolve_unit', (e, id, action) => store.resolveUnit(id, action));
+  ipcMain.handle('stock:replace_unit', (e, id, serial) => store.replaceUnit(id, serial));
+  ipcMain.handle('stock:list_lots', () => store.listStockLots());
+  ipcMain.handle('stock:mark_lot_short', (e, id, qty, note) => store.markLotShort(id, qty, note));
+  ipcMain.handle('stock:resolve_lot_short', (e, id, action, qty) => store.resolveLotShort(id, action, qty));
   ipcMain.handle('stock:delete_purchase_invoice', (e, id) => store.deletePurchaseInvoice(id));
   // Supplier invoice PDF -> purchase invoice draft (lines matched to Products, supplier matched by GSTIN/name).
   ipcMain.handle('stock:parse_invoice_pdf', async (e, bytes) => {

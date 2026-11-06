@@ -11,10 +11,55 @@ function productLabel(p) {
   return String(p.description || '').split('\n')[0] + (p.spec_model && !String(p.description).includes(p.spec_model) ? ' — ' + p.spec_model : '');
 }
 
+// Physically available: not missing, replaced or written off.
+function isUnitAvailable(u) {
+  return !u.issue_status || u.issue_status === 'received';
+}
+
+function stockErrorText(err) {
+  return String((err && err.message) || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+}
+
+// Small form dialog. fields: [{ key, label, type, value, placeholder, min, max }]; onSubmit(values) may throw.
+function openStockDialog({ title, intro, fields, submitLabel }, onSubmit) {
+  const overlay = el('div', { class: 'modal-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+  const inputs = {};
+  const errorBox = el('div', { style: 'color:#c0392b;font-size:12px;margin-bottom:8px' });
+  const rows = fields.map(f => {
+    inputs[f.key] = el('input', {
+      type: f.type || 'text', value: f.value === undefined ? '' : f.value, placeholder: f.placeholder || '',
+      ...(f.min !== undefined ? { min: f.min } : {}), ...(f.max !== undefined ? { max: f.max } : {})
+    });
+    return el('div', { class: 'field' }, [el('label', {}, [f.label]), inputs[f.key]]);
+  });
+  const submit = el('button', { class: 'btn', onclick: async () => {
+    const values = {};
+    Object.keys(inputs).forEach(k => { values[k] = inputs[k].value.trim(); });
+    submit.disabled = true;
+    errorBox.textContent = '';
+    try {
+      await onSubmit(values);
+      overlay.remove();
+    } catch (err) {
+      errorBox.textContent = stockErrorText(err);
+      submit.disabled = false;
+    }
+  } }, [submitLabel || 'Save']);
+  overlay.appendChild(el('div', { class: 'modal-box' }, [
+    el('h3', {}, [title]),
+    intro ? el('div', { style: 'font-size:12.5px;color:#374151;margin-bottom:12px' }, [intro]) : null,
+    ...rows,
+    errorBox,
+    el('div', { class: 'btn-row' }, [submit, el('button', { class: 'btn secondary', onclick: () => overlay.remove() }, ['Cancel'])])
+  ].filter(Boolean)));
+  document.body.appendChild(overlay);
+  if (fields.length) inputs[fields[0].key].focus();
+}
+
 async function renderStock(root) {
   root.appendChild(el('h1', { class: 'page-title' }, ['Stock']));
 
-  const tabs = [['instock', 'Inventory'], ['serials', 'All Serial Nos'], ['invoices', 'Purchase Invoices']];
+  const tabs = [['instock', 'Inventory'], ['serials', 'All Serial Nos'], ['missing', '⚠️ Missing'], ['invoices', 'Purchase Invoices']];
   let active = 'instock';
   const tabRow = el('div', { class: 'btn-row', style: 'margin-bottom:14px' });
   const searchRow = el('div', { class: 'search-row' });
@@ -42,9 +87,99 @@ async function renderStock(root) {
     const units = await window.api.stock.listUnits(search);
     if (active === 'instock') {
       const qtyRows = (await window.api.stock.listQty())
-        .filter(r => r.balance > 0 && String(r.description).toLowerCase().includes(search.toLowerCase()));
-      drawInStock(units.filter(u => !u.out_document_id), qtyRows);
+        .filter(r => (r.balance > 0 || r.missing > 0) && String(r.description).toLowerCase().includes(search.toLowerCase()));
+      drawInStock(units.filter(u => !u.out_document_id && (isUnitAvailable(u) || u.issue_status === 'missing')), qtyRows);
+    } else if (active === 'missing') {
+      const lots = (await window.api.stock.listLots())
+        .filter(l => Number(l.short_qty) > 0 && String(l.description).toLowerCase().includes(search.toLowerCase()));
+      drawMissing(units.filter(u => u.issue_status === 'missing'), lots);
     } else drawSerials(units);
+  }
+
+  function missingTag(n) {
+    return n > 0 ? el('span', { style: 'color:#c0392b;font-weight:700;margin-left:8px;white-space:nowrap' }, [`⚠️ ${n} missing`]) : null;
+  }
+
+  function resolveActions(u) {
+    return el('div', { class: 'btn-row' }, [
+      el('span', { class: 'btn small', onclick: () => {
+        if (!confirmDialog(`Mark ${u.serial_no} as received? It goes back into stock.`)) return;
+        runAction(() => window.api.stock.resolveUnit(u.id, 'received'), `${u.serial_no} is back in stock`);
+      } }, ['✅ Received']),
+      el('span', { class: 'btn small secondary', onclick: () => openStockDialog({
+        title: 'Replace Pump',
+        intro: `${u.serial_no} will stay on record as replaced. The new pump goes into stock on the same purchase invoice.`,
+        fields: [{ key: 'serial', label: 'New Serial No', placeholder: 'Serial number of the replacement' }],
+        submitLabel: 'Replace'
+      }, async (v) => {
+        const created = await window.api.stock.replaceUnit(u.id, v.serial);
+        showToast(`${created.serial_no} added to stock`);
+        load();
+      }) }, ['🔁 Replace']),
+      el('span', { class: 'btn small danger', onclick: () => {
+        if (!confirmDialog(`Write off ${u.serial_no}? Use this when the pump will never come, e.g. a credit note was given. It cannot be undone.`)) return;
+        runAction(() => window.api.stock.resolveUnit(u.id, 'written_off'), `${u.serial_no} written off`);
+      } }, ['❌ Write Off'])
+    ]);
+  }
+
+  async function runAction(action, message) {
+    try {
+      await action();
+      showToast(message);
+      load();
+    } catch (err) {
+      showToast(stockErrorText(err));
+    }
+  }
+
+  function drawMissing(units, lots) {
+    if (units.length === 0 && lots.length === 0) {
+      card.appendChild(el('div', { class: 'empty-state' }, ['Nothing is missing. 👍']));
+      return;
+    }
+    const tbody = el('tbody');
+    units.forEach(u => {
+      const inv = u.purchase_invoices || {};
+      tbody.appendChild(el('tr', { style: 'background:#fef2f2' }, [
+        el('td', { style: 'font-weight:700' }, [u.serial_no]),
+        el('td', {}, [String(u.description).split('\n')[0]]),
+        el('td', {}, [inv.invoice_no || '-', el('div', { style: 'font-size:11px;color:#6b7280' }, [inv.supplier_snapshot ? inv.supplier_snapshot.name : ''])]),
+        el('td', { style: 'font-size:12px' }, [u.issue_note || '-', el('div', { style: 'font-size:11px;color:#6b7280' }, [u.issue_date ? 'Since ' + fmtDate(u.issue_date) : ''])]),
+        el('td', {}, [resolveActions(u)])
+      ]));
+    });
+    lots.forEach(l => {
+      const inv = l.purchase_invoices || {};
+      const pending = Number(l.short_qty);
+      const resolveLot = (action, title, label) => openStockDialog({
+        title,
+        intro: `${String(l.description).split('\n')[0]}: ${pending} short`,
+        fields: [{ key: 'qty', label: 'How many?', type: 'number', value: pending, min: 1, max: pending }],
+        submitLabel: label
+      }, async (v) => {
+        await window.api.stock.resolveLotShort(l.id, action, Number(v.qty));
+        showToast('Stock updated');
+        load();
+      });
+      tbody.appendChild(el('tr', { style: 'background:#fef2f2' }, [
+        el('td', { style: 'font-weight:700' }, [`${pending} short`]),
+        el('td', {}, [String(l.description).split('\n')[0]]),
+        el('td', {}, [inv.invoice_no || '-', el('div', { style: 'font-size:11px;color:#6b7280' }, [inv.supplier_snapshot ? inv.supplier_snapshot.name : ''])]),
+        el('td', { style: 'font-size:12px' }, [l.short_note || '-', el('div', { style: 'font-size:11px;color:#6b7280' }, [l.short_date ? 'Since ' + fmtDate(l.short_date) : ''])]),
+        el('td', {}, [el('div', { class: 'btn-row' }, [
+          el('span', { class: 'btn small', onclick: () => resolveLot('received', 'Mark Received', 'Received') }, ['✅ Received']),
+          el('span', { class: 'btn small danger', onclick: () => resolveLot('written_off', 'Write Off', 'Write Off') }, ['❌ Write Off'])
+        ])])
+      ]));
+    });
+    card.appendChild(el('table', { class: 'data-table' }, [
+      el('thead', {}, [el('tr', {}, [
+        el('th', {}, ['Serial No / Qty']), el('th', {}, ['Item']), el('th', {}, ['Purchase Invoice']),
+        el('th', {}, ['Note']), el('th', {}, [''])
+      ])]),
+      tbody
+    ]));
   }
 
   function drawInStock(units, qtyRows) {
@@ -55,25 +190,26 @@ async function renderStock(root) {
     const groups = new Map();
     units.forEach(u => {
       const key = u.product_id ? 'p' + u.product_id : 'd' + u.description;
-      if (!groups.has(key)) groups.set(key, { description: u.description, units: [] });
-      groups.get(key).units.push(u);
+      if (!groups.has(key)) groups.set(key, { description: u.description, units: [], missing: 0 });
+      if (u.issue_status === 'missing') groups.get(key).missing++;
+      else groups.get(key).units.push(u);
     });
     const tbody = el('tbody');
     [...groups.values()].forEach(g => {
       tbody.appendChild(el('tr', {}, [
         el('td', {}, [String(g.description).split('\n')[0]]),
         el('td', { style: 'text-align:center;font-weight:700' }, [String(g.units.length)]),
-        el('td', { style: 'font-size:12px' }, [g.units.map(u => u.serial_no).join(', ')])
+        el('td', { style: 'font-size:12px' }, [g.units.map(u => u.serial_no).join(', '), missingTag(g.missing)])
       ]));
     });
     qtyRows.forEach(r => {
       tbody.appendChild(el('tr', {}, [
         el('td', {}, [String(r.description).split('\n')[0]]),
-        el('td', { style: 'text-align:center;font-weight:700' }, [String(r.balance)]),
-        el('td', { style: 'font-size:12px;color:#6b7280' }, ['No serial no.'])
+        el('td', { style: 'text-align:center;font-weight:700' }, [String(Math.max(0, r.balance))]),
+        el('td', { style: 'font-size:12px;color:#6b7280' }, ['No serial no.', missingTag(r.missing)])
       ]));
     });
-    const total = units.length + qtyRows.reduce((n, r) => n + r.balance, 0);
+    const total = [...groups.values()].reduce((n, g) => n + g.units.length, 0) + qtyRows.reduce((n, r) => n + Math.max(0, r.balance), 0);
     card.appendChild(el('div', { style: 'font-size:12px;color:#6b7280;margin-bottom:8px' }, [`${total} unit(s) in stock`]));
     card.appendChild(el('table', { class: 'data-table' }, [
       el('thead', {}, [el('tr', {}, [el('th', {}, ['Item']), el('th', {}, ['Qty']), el('th', {}, ['Serial Nos'])])]),
@@ -90,17 +226,49 @@ async function renderStock(root) {
     units.forEach(u => {
       const inv = u.purchase_invoices || {};
       const out = u.documents;
-      tbody.appendChild(el('tr', {}, [
-        el('td', { style: 'font-weight:600' }, [u.serial_no]),
+      const closed = u.issue_status === 'replaced' || u.issue_status === 'written_off';
+      const rowStyle = u.issue_status === 'missing' ? 'background:#fef2f2' : (closed ? 'color:#9ca3af' : '');
+      let status;
+      if (u.issue_status === 'missing') {
+        status = el('div', {}, [
+          el('span', { class: 'badge', style: 'background:#c0392b' }, ['⚠️ Missing']),
+          el('div', { style: 'font-size:11px;margin:3px 0 5px' }, [`${u.issue_note || ''}${u.issue_date ? ' (since ' + fmtDate(u.issue_date) + ')' : ''}`]),
+          resolveActions(u)
+        ]);
+      } else if (u.issue_status === 'replaced') {
+        status = el('div', { style: 'font-size:12px' }, [`Replaced by ${u.replaced_by_serial}`]);
+      } else if (u.issue_status === 'written_off') {
+        status = el('div', { style: 'font-size:12px' }, [`Written off${u.issue_note ? ': ' + u.issue_note : ''}`]);
+      } else if (out) {
+        status = el('span', {
+          class: `badge ${out.doc_type}`, style: 'cursor:pointer',
+          onclick: () => navigate('document-editor', { docId: out.id })
+        }, [`${STOCK_OUT_LABEL[out.doc_type] || 'Out'}: ${out.doc_number}`]);
+      } else {
+        status = el('div', { style: 'display:flex;gap:10px;align-items:center;flex-wrap:wrap' }, [
+          el('span', { style: 'color:#15803d;font-weight:600' }, ['In stock']),
+          el('span', { class: 'btn small secondary', onclick: () => openStockDialog({
+            title: 'Mark Missing',
+            intro: `${u.serial_no} will not be counted in Inventory and cannot be sold until it is received.`,
+            fields: [{ key: 'note', label: 'Note', placeholder: 'e.g. Short from KOEL Ahmedabad, they will recover and send' }],
+            submitLabel: 'Mark Missing'
+          }, async (v) => {
+            await window.api.stock.markUnitMissing(u.id, v.note);
+            showToast(`${u.serial_no} marked missing`);
+            load();
+          }) }, ['⚠️ Mark Missing'])
+        ]);
+      }
+      const history = [
+        u.replaces_serial ? `Replaces ${u.replaces_serial}` : null,
+        u.issue_status === 'received' ? `Was missing${u.issue_note ? ': ' + u.issue_note : ''}` : null
+      ].filter(Boolean).join(' · ');
+      tbody.appendChild(el('tr', { style: rowStyle }, [
+        el('td', { style: `font-weight:600${closed ? ';text-decoration:line-through' : ''}` }, [u.serial_no]),
         el('td', {}, [String(u.description).split('\n')[0]]),
         el('td', {}, [`${inv.invoice_no || '-'}${inv.invoice_date ? ' (' + fmtDate(inv.invoice_date) + ')' : ''}`]),
         el('td', {}, [inv.supplier_snapshot ? inv.supplier_snapshot.name : '-']),
-        el('td', {}, [out
-          ? el('span', {
-              class: `badge ${out.doc_type}`, style: 'cursor:pointer',
-              onclick: () => navigate('document-editor', { docId: out.id })
-            }, [`${STOCK_OUT_LABEL[out.doc_type] || 'Out'}: ${out.doc_number}`])
-          : el('span', { style: 'color:#15803d;font-weight:600' }, ['In stock'])])
+        el('td', {}, [status, history ? el('div', { style: 'font-size:11px;color:#6b7280;margin-top:3px' }, [history]) : null].filter(Boolean))
       ]));
     });
     card.appendChild(el('table', { class: 'data-table' }, [
@@ -110,6 +278,48 @@ async function renderStock(root) {
       ])]),
       tbody
     ]));
+  }
+
+  // Quantity-only lines of one invoice: choose the line, how many are short and a note.
+  async function openMarkShort(inv) {
+    const lots = (await window.api.stock.listLots()).filter(l => l.purchase_invoice_id === inv.id);
+    const overlay = el('div', { class: 'modal-overlay', onclick: (e) => { if (e.target === overlay) overlay.remove(); } });
+    const rows = lots.map(l => {
+      const qtyInput = el('input', { type: 'number', min: '0', step: '1', value: '0', style: 'width:80px' });
+      const noteInput = el('input', { placeholder: 'Note (optional)' });
+      const arrived = Number(l.qty) - (Number(l.short_qty) || 0) - (Number(l.short_written_off) || 0);
+      return { l, qtyInput, noteInput, row: el('tr', {}, [
+        el('td', { style: 'font-size:12px' }, [String(l.description).split('\n')[0],
+          el('div', { style: 'font-size:11px;color:#6b7280' }, [`${arrived} received${Number(l.short_qty) ? ', ' + Number(l.short_qty) + ' already short' : ''}`])]),
+        el('td', {}, [qtyInput]),
+        el('td', {}, [noteInput])
+      ]) };
+    });
+    const errorBox = el('div', { style: 'color:#c0392b;font-size:12px;margin:8px 0' });
+    overlay.appendChild(el('div', { class: 'modal-box', style: 'width:720px;max-width:95vw' }, [
+      el('h3', {}, [`Mark Short — Invoice ${inv.invoice_no}`]),
+      el('table', { class: 'data-table' }, [
+        el('thead', {}, [el('tr', {}, [el('th', {}, ['Item']), el('th', {}, ['Short Qty']), el('th', {}, ['Note'])])]),
+        el('tbody', {}, rows.map(r => r.row))
+      ]),
+      errorBox,
+      el('div', { class: 'btn-row' }, [
+        el('button', { class: 'btn', onclick: async () => {
+          try {
+            const chosen = rows.filter(r => Number(r.qtyInput.value) > 0);
+            if (!chosen.length) { errorBox.textContent = 'Enter how many are short'; return; }
+            for (const r of chosen) await window.api.stock.markLotShort(r.l.id, Number(r.qtyInput.value), r.noteInput.value.trim());
+            overlay.remove();
+            showToast('Marked short');
+            load();
+          } catch (err) {
+            errorBox.textContent = stockErrorText(err);
+          }
+        } }, ['Mark Short']),
+        el('button', { class: 'btn secondary', onclick: () => overlay.remove() }, ['Cancel'])
+      ])
+    ]));
+    document.body.appendChild(overlay);
   }
 
   async function drawInvoices() {
@@ -128,13 +338,16 @@ async function renderStock(root) {
         el('td', {}, [[
           inv.unit_count ? `${inv.in_stock_count} / ${inv.unit_count} in stock` : null,
           inv.qty_only_count ? `${inv.qty_only_count} without serial no.` : null
-        ].filter(Boolean).join(', ')]),
-        el('td', {}, [el('span', { class: 'btn small danger', onclick: async () => {
-          if (!confirmDialog(`Delete purchase invoice ${inv.invoice_no} and its ${inv.unit_count + inv.qty_only_count} unit(s) from stock?`)) return;
-          await window.api.stock.deletePurchaseInvoice(inv.id);
-          showToast('Purchase invoice deleted');
-          load();
-        } }, ['Delete'])])
+        ].filter(Boolean).join(', '), missingTag(inv.missing_count)]),
+        el('td', {}, [el('div', { class: 'btn-row' }, [
+          inv.qty_only_count ? el('span', { class: 'btn small secondary', onclick: () => openMarkShort(inv) }, ['⚠️ Mark Short']) : null,
+          el('span', { class: 'btn small danger', onclick: async () => {
+            if (!confirmDialog(`Delete purchase invoice ${inv.invoice_no} and its ${inv.unit_count + inv.qty_only_count} unit(s) from stock?`)) return;
+            await window.api.stock.deletePurchaseInvoice(inv.id);
+            showToast('Purchase invoice deleted');
+            load();
+          } }, ['Delete'])
+        ].filter(Boolean))])
       ]));
     });
     card.appendChild(el('table', { class: 'data-table' }, [
@@ -176,7 +389,7 @@ async function openPurchaseInvoiceModal(opts, onSaved) {
   let lines = [];
   const linesBody = el('tbody');
 
-  function blankLine() { return { product_id: null, description: '', hsn_sac: '', qty: 1, rate: 0, serialsText: '', noSerial: false }; }
+  function blankLine() { return { product_id: null, description: '', hsn_sac: '', qty: 1, rate: 0, serialsText: '', noSerial: false, hasMissing: false, missingText: '', shortQty: 0, issueNote: '' }; }
 
   function drawLines() {
     linesBody.innerHTML = '';
@@ -207,14 +420,33 @@ async function openPurchaseInvoiceModal(opts, onSaved) {
       noSerialInput.checked = !!line.noSerial;
       noSerialInput.addEventListener('change', () => { line.noSerial = noSerialInput.checked; drawLines(); });
       const noSerialLabel = el('label', { style: 'display:flex;gap:6px;align-items:center;font-size:11.5px;color:#6b7280;margin-top:4px;cursor:pointer' }, [noSerialInput, 'No serial no. (stock by quantity)']);
+      // Billed but not physically received: which serials (or how many, for quantity-only items) and why.
+      const missingToggle = el('input', { type: 'checkbox', style: 'width:auto;margin:0' });
+      missingToggle.checked = !!line.hasMissing;
+      missingToggle.addEventListener('change', () => { line.hasMissing = missingToggle.checked; drawLines(); });
+      const missingLabel = el('label', { style: 'display:flex;gap:6px;align-items:center;font-size:11.5px;color:#c0392b;margin-top:4px;cursor:pointer' }, [missingToggle, line.noSerial ? '⚠️ Some are short' : '⚠️ Some pumps are missing']);
+      let missingFields = null;
+      if (line.hasMissing) {
+        const noteInput = el('input', { value: line.issueNote || '', placeholder: 'Note, e.g. short from KOEL Ahmedabad' });
+        noteInput.addEventListener('input', () => { line.issueNote = noteInput.value; });
+        let whichInput;
+        if (line.noSerial) {
+          whichInput = el('input', { type: 'number', min: '1', step: '1', value: line.shortQty || '', placeholder: 'How many are short' });
+          whichInput.addEventListener('input', () => { line.shortQty = parseInt(whichInput.value, 10) || 0; });
+        } else {
+          whichInput = el('textarea', { rows: 2, placeholder: 'Missing serial no(s), copied from the list above' }, [line.missingText]);
+          whichInput.addEventListener('input', () => { line.missingText = whichInput.value; });
+        }
+        missingFields = el('div', { style: 'margin-top:4px;display:flex;flex-direction:column;gap:4px' }, [whichInput, noteInput]);
+      }
       linesBody.appendChild(el('tr', {}, [
         el('td', { style: 'width:42%' }, [itemInput,
           itemTitle ? el('div', { style: 'font-size:11px;color:#6b7280;margin-top:3px' }, [itemTitle]) : null].filter(Boolean)),
         el('td', {}, [qtyInput]),
         el('td', {}, [rateInput]),
         el('td', {}, line.noSerial
-          ? [el('div', { style: 'font-size:12px;font-weight:600;color:#0e3a5f' }, [`Quantity only: ${line.qty} unit(s)`]), noSerialLabel]
-          : [serialsInput, countNote, noSerialLabel]),
+          ? [el('div', { style: 'font-size:12px;font-weight:600;color:#0e3a5f' }, [`Quantity only: ${line.qty} unit(s)`]), noSerialLabel, missingLabel, missingFields].filter(Boolean)
+          : [serialsInput, countNote, noSerialLabel, missingLabel, missingFields].filter(Boolean)),
         el('td', {}, [el('span', {
           style: 'cursor:pointer;color:#c0392b;font-weight:700',
           onclick: () => { lines.splice(idx, 1); if (!lines.length) lines.push(blankLine()); drawLines(); }
@@ -246,7 +478,10 @@ async function openPurchaseInvoiceModal(opts, onSaved) {
       notes: notesInput.value.trim(),
       lines: lines.filter(l => l.description && l.qty > 0).map(l => ({
         product_id: l.product_id, description: l.description, hsn_sac: l.hsn_sac, rate: l.rate,
-        qty: l.qty, no_serial: !!l.noSerial, serials: l.noSerial ? [] : parseSerials(l.serialsText)
+        qty: l.qty, no_serial: !!l.noSerial, serials: l.noSerial ? [] : parseSerials(l.serialsText),
+        missing_serials: l.hasMissing && !l.noSerial ? parseSerials(l.missingText) : [],
+        short_qty: l.hasMissing && l.noSerial ? l.shortQty : 0,
+        issue_note: l.hasMissing ? (l.issueNote || '').trim() : ''
       }))
     };
     if (!payload.supplier_id) { showToast('Select the supplier'); return; }
@@ -373,7 +608,7 @@ async function openPurchaseInvoiceModal(opts, onSaved) {
 async function openSerialPicker({ item, docId, docType }, onDone) {
   const units = await window.api.stock.listUnits('');
   const selected = new Set(item.serial_nos || []);
-  const usable = units.filter(u => !u.out_document_id || u.out_document_id === docId || selected.has(u.serial_no) ||
+  const usable = units.filter(isUnitAvailable).filter(u => !u.out_document_id || u.out_document_id === docId || selected.has(u.serial_no) ||
     (u.documents && ((docType === 'tax_invoice' && u.documents.doc_type === 'delivery_challan') ||
                      (docType === 'delivery_challan' && u.documents.doc_type === 'tax_invoice' && selected.has(u.serial_no)))));
   const title = String(item.description || '').split('\n')[0].trim().toLowerCase();

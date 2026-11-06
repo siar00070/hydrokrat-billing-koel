@@ -37,6 +37,12 @@ contextBridge.exposeInMainWorld('api', {
     listUnits: (search) => ipcRenderer.invoke('stock:list_units', search),
     listQty: (excludeDocIds) => ipcRenderer.invoke('stock:list_qty', excludeDocIds),
     listPurchaseInvoices: () => ipcRenderer.invoke('stock:list_purchase_invoices'),
+    markUnitMissing: (id, note) => ipcRenderer.invoke('stock:mark_unit_missing', id, note),
+    resolveUnit: (id, action) => ipcRenderer.invoke('stock:resolve_unit', id, action),
+    replaceUnit: (id, serial) => ipcRenderer.invoke('stock:replace_unit', id, serial),
+    listLots: () => ipcRenderer.invoke('stock:list_lots'),
+    markLotShort: (id, qty, note) => ipcRenderer.invoke('stock:mark_lot_short', id, qty, note),
+    resolveLotShort: (id, action, qty) => ipcRenderer.invoke('stock:resolve_lot_short', id, action, qty),
     createPurchaseInvoice: (inv) => ipcRenderer.invoke('stock:create_purchase_invoice', inv),
     deletePurchaseInvoice: (id) => ipcRenderer.invoke('stock:delete_purchase_invoice', id),
     parseInvoicePdf: (bytes) => ipcRenderer.invoke('stock:parse_invoice_pdf', bytes)
