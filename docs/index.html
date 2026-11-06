@@ -10,21 +10,12 @@
 /* Layout: a super stockist's register for dealers. Sticky search, pump families that fold open to items,
    a quantity stepper per item, a bottom bar for the order list, and a print sheet for the dealer's PO. */
 :root {
+  color-scheme: light; /* light only: the brand logos have dark lettering and are shown straight on the page */
   --bg: #f1f4f5; --surface: #ffffff; --surface-2: #e8eef0; --fg: #16262e; --muted: #5b6d75; --line: #d3dcdf;
   --accent: #0b6f64; --accent-soft: #d9efec; --on-accent: #ffffff; --head: #0e3a5f; --head-fg: #ffffff;
   --alert: #b3261e; --mark: #ffe08a; --mark-fg: #16262e;
   --display: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
   --body: "Barlow", "Segoe UI", Arial, sans-serif;
-}
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #101a1f; --surface: #182429; --surface-2: #213037; --fg: #e4ecee; --muted: #9db0b7; --line: #30434b;
-  --accent: #4fc4b5; --accent-soft: #173a37; --on-accent: #101a1f; --head: #1b4a70; --head-fg: #f1f6fa;
-  --alert: #ff8f86; --mark: #b98f1d; --mark-fg: #101a1f; color-scheme: dark;
-} }
-:root[data-theme="dark"] {
-  --bg: #101a1f; --surface: #182429; --surface-2: #213037; --fg: #e4ecee; --muted: #9db0b7; --line: #30434b;
-  --accent: #4fc4b5; --accent-soft: #173a37; --on-accent: #101a1f; --head: #1b4a70; --head-fg: #f1f6fa;
-  --alert: #ff8f86; --mark: #b98f1d; --mark-fg: #101a1f; color-scheme: dark;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -34,14 +25,14 @@ body.has-bar .wrap { padding-bottom: 104px; }
 h1 { font-family: var(--display); font-size: 34px; line-height: 1; margin: 0; }
 .sub { color: var(--muted); font-size: 13.5px; margin-top: 4px; }
 .how { color: var(--muted); font-size: 13.5px; }
-/* Brand logos always sit on white, in both themes, because their lettering is dark. */
-.brandbar { background: #ffffff; border: 1px solid var(--line); border-radius: 8px; padding: 12px 18px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 24px; }
+/* Brand logos sit straight on the page background. */
+.brandbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 24px; padding-bottom: 4px; }
 .brandbar img { display: block; width: auto; }
 .brandbar .hv { height: 44px; }
 .brands { display: flex; align-items: center; gap: 18px; }
 .brands img { height: 46px; }
 .brands img.varuna { height: 30px; }
-.brands .rule { width: 1px; align-self: stretch; background: #cfd6d9; }
+.brands .rule { width: 1px; align-self: stretch; background: var(--line); }
 .tools { position: sticky; top: 0; z-index: 5; background: var(--bg); padding-block: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 #search { flex: 1 1 260px; min-width: 0; font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
 input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -129,7 +120,6 @@ mark { background: var(--mark); color: var(--mark-fg); border-radius: 2px; paddi
   .item-row .step { grid-column: 2 / -1; justify-content: flex-start; }
   .sbtn { width: 28px; }
   .sin { width: 42px; }
-  .brandbar { padding: 10px 12px; }
   .brandbar .hv { height: 32px; }
   .brands { gap: 12px; }
   .brands img { height: 38px; }
