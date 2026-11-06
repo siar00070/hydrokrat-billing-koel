@@ -137,7 +137,6 @@ function matchProduct(description, products) {
   const stage = (String(description).match(/(\d+)\s*STAGE/i) || [])[1];
   let best = null;
   for (const p of products) {
-    if (norm(p.description) === target) return p; // added from an earlier invoice
     const models = String(p.spec_model || '').split('/').map(norm).filter(m => m.length >= 3);
     const len = Math.max(0, ...models.filter(m => target.startsWith(m)).map(m => m.length));
     if (!len) continue;
@@ -146,7 +145,11 @@ function matchProduct(description, products) {
     if (stage && new RegExp(`\\b${stage} Stage\\b`, 'i').test(p.description)) score += 5;
     if (!best || score > best.score) best = { score, product: p };
   }
-  return best ? best.product : null;
+  // A catalogue model always wins. Only when none fits, a product with exactly this name is used
+  // (items added from an earlier invoice, such as control panels). Products that merely carry the
+  // supplier's wording must not beat the catalogue, or pumps end up under "Other" for dealers.
+  if (best) return best.product;
+  return products.find(p => norm(p.description) === target) || null;
 }
 
 module.exports = { extractPdfText, parseInvoiceText, expandSerials, matchProduct, parseDate };

@@ -17,7 +17,7 @@ from (values
    'KOEL Varuna V4 Borewell Submersible Pumpset (100 mm, OF/WF) - WO:3H(N) / WW:3H(N) - 1.1 kW / 1.5 HP - 15 Stage')
 ) as m(pattern, catalogue)
 join products p on p.description = m.catalogue
-where u.product_id is null
+where u.product_id is distinct from p.id
   and regexp_replace(u.description, '\s+', ' ', 'g') ilike m.pattern;
 
 select item, quantity from public_stock_list();

@@ -4,6 +4,8 @@
 --           (the 9 includes the one pump marked missing, so dealers will still see 8)
 --   catalogue_model_found = true on every row
 -- If a row says false, stop and tell Claude: that catalogue model is missing from Products.
+-- It finds the pumps by their name, whether they are linked to no product or to a product
+-- that carries the supplier's wording.
 
 with map(pattern, catalogue) as (values
   ('VS 5H(L) 1.5 HP 20 STAGE%',
@@ -17,8 +19,9 @@ select m.catalogue,
        count(distinct u.id) as units,
        exists (select 1 from products p where p.description = m.catalogue) as catalogue_model_found
 from map m
+left join products cp on cp.description = m.catalogue
 left join stock_units u
-  on u.product_id is null
+  on u.product_id is distinct from cp.id
  and regexp_replace(u.description, '\s+', ' ', 'g') ilike m.pattern
 group by m.catalogue
 order by m.catalogue;
