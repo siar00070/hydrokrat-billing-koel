@@ -52,6 +52,14 @@ input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); ou
 [aria-expanded="true"] > .chev { transform: rotate(90deg); }
 .sub-head { border-top: 1px solid var(--line); padding: 8px 14px 6px 46px; font: 600 12px var(--body); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); background: var(--surface); }
 .item-row { border-top: 1px solid var(--line); padding-block: 9px; }
+.has-photo { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.thumb { flex: none; width: 52px; height: 44px; display: flex; align-items: center; justify-content: center; padding: 0; background: none; border: 0; cursor: zoom-in; }
+.thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.sub-head { display: flex; align-items: center; gap: 10px; }
+.sub-head .thumb { width: 84px; height: 52px; }
+.lightbox { position: fixed; inset: 0; z-index: 50; background: rgba(8, 16, 20, .6); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; cursor: zoom-out; }
+.lightbox img { max-width: min(92vw, 520px); max-height: 60vh; background: #fff; border-radius: 10px; padding: 14px; }
+.lightbox p { margin: 0; color: #fff; font-size: 13px; text-align: center; max-width: 420px; }
 .model { font-weight: 600; }
 .desc { color: var(--muted); font-size: 13px; }
 .qty { font-weight: 600; }
@@ -201,7 +209,46 @@ const $ = (id) => document.getElementById(id);
 let groups = [];
 let loadedAt = null;
 const openGroups = new Set();
-const meta = new Map();          // item key -> { key, model, desc, qty (available), group }
+// Pump photos from the Varuna catalogue, filled in by tools/build_dealer_page.js (one photo per pump series).
+const PHOTOS = /*PUMP_PHOTOS*/{};
+// Which photo a product family uses, from the family name. First match wins, so the specific names come first.
+const PHOTO_RULES = [
+  [/^V([3-9]) Borewell/i, m => 'v' + m[1]], [/^Mini HMPS/i, 'minihmps'], [/^HMPS/i, 'hmps'], [/^Ultra/i, 'ultra'],
+  [/^VMPS/i, 'vmps'], [/^VSSP/i, 'vssp'], [/^VSCP/i, 'vscp'], [/^CMB Class B/i, 'cmbb'], [/^CMB/i, 'cmba'],
+  [/^Ivory II/i, 'ivory2'], [/^Ivory Pro/i, 'ivorypro'], [/^Topaz/i, 'topaz'], [/^Super Gold/i, 'supergold'],
+  [/^Emerald/i, 'emerald'], [/^Diamond/i, 'diamond'], [/^VMSJP/i, 'vmsjp'], [/^VMS\b/i, 'vms'], [/^VSWA/i, 'vswa'],
+  [/^VSW\b/i, 'vsw'], [/^Crystal/i, 'crystal'], [/^Pearl/i, 'pearl'], [/^Hira/i, 'hira'], [/^AdvantACE/i, 'advantace'],
+  [/Pressure Booster Pumpset/i, 'boosterset'], [/Pressure Booster/i, 'boosterpump'], [/Circulation/i, 'vilc'],
+  [/Heavy Duty Self Priming/i, 'vmb'], [/Column Pipe/i, 'pipe']
+];
+function photoFor(family) {
+  for (const [re, name] of PHOTO_RULES) {
+    const m = family.match(re);
+    if (m) { const key = typeof name === 'function' ? name(m) : name; return PHOTOS[key] ? { key, src: PHOTOS[key] } : null; }
+  }
+  return null;
+}
+// Photo button: tapping it shows the picture larger.
+function thumb(family, caption) {
+  const p = photoFor(family);
+  if (!p) return null;
+  const b = make('button', 'thumb');
+  b.type = 'button';
+  b.setAttribute('aria-label', `Show photo of ${caption}`);
+  const img = make('img');
+  img.src = p.src; img.alt = '';
+  b.append(img);
+  b.addEventListener('click', () => {
+    const box = make('div', 'lightbox');
+    const big = make('img'); big.src = p.src; big.alt = caption;
+    box.append(big, make('p', '', `${caption}. Photo from the Varuna catalogue; models in the same series look alike.`));
+    box.addEventListener('click', () => box.remove());
+    document.body.append(box);
+  });
+  return b;
+}
+
+const meta = new Map();         // item key -> { key, model, desc, qty (available), group }
 const cart = new Map();          // item key -> quantity wanted
 const badgeEls = new Map();      // group name -> badge element on screen
 let dealer = { name: '', mobile: '' };
@@ -292,7 +339,7 @@ function toGroups(rows) {
       desc = rest.slice(k).join(' · ');
       if (HEADED.has(section)) sub = subFor(section, parts[0]);
     }
-    const item = { key: String(r.item), model, desc, qty: Number(r.quantity), group: section, sub };
+    const item = { key: String(r.item), model, desc, qty: Number(r.quantity), group: section, sub, family: parts[0] };
     if (!bySection.has(section)) bySection.set(section, []);
     bySection.get(section).push(item);
     meta.set(item.key, item);
@@ -404,14 +451,22 @@ function render() {
       let lastSub = null;
       items.forEach(it => {
         if (manySubs && it.sub !== lastSub) {
-          section.append(marked('div', 'sub-head', it.sub, q));
+          // One photo per size or family heading; the rows below it share that photo.
+          const sh = marked('div', 'sub-head', it.sub, q);
+          const ph = HEADED.has(g.name) ? thumb(it.family, it.sub) : null;
+          if (ph) sh.prepend(ph);
+          section.append(sh);
           lastSub = it.sub;
         }
         const row = make('div', 'item-row');
         const label = make('div');
         label.append(marked('div', 'model', it.model, q));
         if (it.desc) label.append(marked('div', 'desc', it.desc, q));
-        row.append(make('span'), label, make('span', 'num qty', String(it.qty)), stepper(it));
+        // Sections of single well-known models show a small photo beside each model.
+        const own = HEADED.has(g.name) ? null : thumb(it.family, it.model);
+        let cell = label;
+        if (own) { cell = make('div', 'has-photo'); cell.append(own, label); }
+        row.append(make('span'), cell, make('span', 'num qty', String(it.qty)), stepper(it));
         section.append(row);
       });
     }
