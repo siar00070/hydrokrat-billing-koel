@@ -10,40 +10,74 @@ async function renderProducts(root) {
   const card = el('div', { class: 'card' });
   root.appendChild(card);
 
+  // Sections follow the Varuna catalogue (Borewell, Openwell, Pressure Booster ...); click a heading to open it.
+  const openSections = new Set();
+
   async function load() {
     card.innerHTML = '';
-    const list = await window.api.products.list(searchInput.value.trim());
+    const typed = searchInput.value.trim();
+    const list = await window.api.products.list(typed);
     if (list.length === 0) {
       card.appendChild(el('div', { class: 'empty-state' }, ['No products found.']));
       return;
     }
-    const table = el('table', { class: 'data-table' }, [
+    const bySection = new Map();
+    list.forEach(p => {
+      const name = productSection(p.description);
+      if (!bySection.has(name)) bySection.set(name, []);
+      bySection.get(name).push(p);
+    });
+    const natural = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true });
+    const table = el('table', { class: 'data-table products-table' }, [
       el('thead', {}, [el('tr', {}, [
-        el('th', {}, ['Description']), el('th', {}, ['HSN/SAC']), el('th', {}, ['Unit']),
+        el('th', { class: 'col-photo' }, ['']), el('th', {}, ['Description']), el('th', {}, ['HSN/SAC']), el('th', {}, ['Unit']),
         el('th', {}, ['Rate']), el('th', {}, ['GST %']), el('th', {}, [''])
       ])])
     ]);
     const tbody = el('tbody');
-    list.forEach(p => {
-      tbody.appendChild(el('tr', {}, [
-        el('td', {}, [p.description]),
-        el('td', {}, [p.hsn_sac || '-']),
-        el('td', {}, [p.unit || '-']),
-        el('td', {}, [fmtMoney(p.default_rate)]),
-        el('td', {}, [p.gst_percent + '%']),
-        el('td', {}, [
-          el('div', { class: 'btn-row' }, [
-            el('span', { class: 'btn small secondary', onclick: () => openProductModal(p, load) }, ['Edit']),
-            el('span', { class: 'btn small danger', onclick: async () => {
-              if (confirmDialog(`Delete product "${p.description}"?`)) {
-                await window.api.products.delete(p.id);
-                showToast('Product deleted');
-                load();
-              }
-            } }, ['Delete'])
+    PRODUCT_SECTIONS.filter(name => bySection.has(name)).forEach(name => {
+      const items = bySection.get(name).map(p => ({ p, sub: productSubheading(name, p.description) }))
+        .sort((a, b) => natural(a.sub, b.sub) || natural(a.p.description, b.p.description));
+      const isOpen = !!typed || openSections.has(name);
+      tbody.appendChild(el('tr', { class: 'section-row', onclick: () => {
+        if (openSections.has(name)) openSections.delete(name); else openSections.add(name);
+        load();
+      } }, [el('td', { colspan: '7' }, [
+        el('span', { class: 'sec-chev' }, [isOpen ? '▼' : '▶']), ' ', el('span', { class: 'sec-name' }, [name]),
+        el('span', { class: 'sec-count' }, [`${items.length} product${items.length === 1 ? '' : 's'}`])
+      ])]));
+      if (!isOpen) return;
+      const manySubs = new Set(items.map(x => x.sub)).size > 1;
+      let lastSub = null;
+      items.forEach(({ p, sub }) => {
+        if (manySubs && sub && sub !== lastSub) {
+          tbody.appendChild(el('tr', { class: 'sub-row' }, [el('td', { colspan: '7' }, [sub])]));
+          lastSub = sub;
+        }
+        const photo = productPhoto(p.description);
+        tbody.appendChild(el('tr', {}, [
+          el('td', { class: 'col-photo' }, photo ? [el('img', {
+            class: 'product-photo', src: photo, alt: '', title: 'Click to enlarge', onclick: () => showProductPhoto(photo, p.description)
+          })] : []),
+          el('td', {}, [p.description]),
+          el('td', {}, [p.hsn_sac || '-']),
+          el('td', {}, [p.unit || '-']),
+          el('td', {}, [fmtMoney(p.default_rate)]),
+          el('td', {}, [p.gst_percent + '%']),
+          el('td', {}, [
+            el('div', { class: 'btn-row' }, [
+              el('span', { class: 'btn small secondary', onclick: () => openProductModal(p, load) }, ['Edit']),
+              el('span', { class: 'btn small danger', onclick: async () => {
+                if (confirmDialog(`Delete product "${p.description}"?`)) {
+                  await window.api.products.delete(p.id);
+                  showToast('Product deleted');
+                  load();
+                }
+              } }, ['Delete'])
+            ])
           ])
-        ])
-      ]));
+        ]));
+      });
     });
     table.appendChild(tbody);
     card.appendChild(table);
@@ -95,4 +129,15 @@ function openProductModal(product, onSaved) {
   overlay.appendChild(box);
   document.body.appendChild(overlay);
   descInput.focus();
+}
+
+// Larger view of a product photo; click anywhere to close.
+function showProductPhoto(src, description) {
+  const overlay = el('div', { class: 'modal-overlay', onclick: () => overlay.remove() }, [
+    el('div', { class: 'photo-box' }, [
+      el('img', { src, alt: '' }),
+      el('div', { class: 'photo-note' }, [productFamily(description) + '. Photo from the Varuna catalogue; models in the same series look alike.'])
+    ])
+  ]);
+  document.body.appendChild(overlay);
 }

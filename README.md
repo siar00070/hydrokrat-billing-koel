@@ -44,3 +44,13 @@ This produces an NSIS installer under `dist/`. Before building, replace `assets/
 `docs/index.html` is the read-only stock page for dealers (sections from the Varuna catalogue, an order list they can print). It is **one self-contained file** with the logos built in, so uploading just that file to a free host such as Netlify is enough. It reads item names and quantities through the `public_stock_list()` database function (`db/migration_dealer_stock.sql`), so it needs no login and shows no prices, serial numbers or invoices.
 
 To change it, edit `dealer-page/index.src.html` (logos are in `dealer-page/img`) and run `node tools/build_dealer_page.js`, which rewrites `docs/index.html`.
+
+### Pump photos and product sections
+
+The Products page groups products into the same sections as the dealer page (Borewell, Openwell, Pressure Booster and so on) and shows a catalogue photo beside each pump series. The rules live in `src/js/pumpCatalog.js` and the dealer page (`dealer-page/index.src.html`): change one, change the other. To refresh the photos from the catalogue:
+
+```
+python tools/build_pump_photos.py "KFD Varuna Catalogue.pdf"
+node tools/build_app_photos.js
+node tools/build_dealer_page.js
+```
