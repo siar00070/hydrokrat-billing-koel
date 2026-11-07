@@ -220,8 +220,7 @@ const PHOTO_RULES = [
   [/^VSW\b/i, 'vsw'], [/^Crystal/i, 'crystal'], [/^Pearl/i, 'pearl'], [/^Hira/i, 'hira'], [/^AdvantACE/i, 'advantace'],
   [/Pressure Booster Pumpset/i, 'boosterset'], [/Pressure Booster/i, 'boosterpump'], [/Circulation/i, 'vilc'],
   [/Heavy Duty Self Priming/i, 'vmb'], [/Column Pipe/i, 'pipe'],
-  [/control panel/i, 'panel']   // the catalogue has no panel photo; shows once dealer-page/img/pumps/panel.webp exists
-];
+  [/control panel/i, 'panel']];
 function photoFor(family) {
   for (const [re, name] of PHOTO_RULES) {
     const m = family.match(re);

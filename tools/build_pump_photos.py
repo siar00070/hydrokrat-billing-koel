@@ -22,6 +22,7 @@ PHOTOS = {
     'crystal': (14, 1), 'pearl': (15, 0), 'boosterpump': (15, 1), 'boosterset': (15, 2),
     'vilc': (16, 2), 'hira': (16, 0), 'ivorypro': (17, 2), 'advantace': (18, 0),
     'cmba': (19, 1), 'cmbb': (21, 1), 'pipe': (73, 1),
+    'panel': (86, 0),   # control panel, from the product portfolio on the last page
 }
 LAY_FLAT = {'v5', 'v6', 'v7', 'v8', 'v9', 'vmps'}
 MAX_SIDE = 300  # pixels on the longest side: sharp enough for a 130 px photo on a phone
