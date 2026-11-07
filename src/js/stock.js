@@ -104,6 +104,7 @@ async function renderStock(root) {
 
   const tabs = [['instock', 'Inventory'], ['serials', 'All Serial Nos'], ['missing', '⚠️ Missing'], ['invoices', 'Purchase Invoices']];
   let active = 'instock';
+  const openStockSections = new Set();   // Inventory sections the user has opened
   const tabRow = el('div', { class: 'btn-row', style: 'margin-bottom:14px' });
   const searchRow = el('div', { class: 'search-row' });
   const searchInput = el('input', { placeholder: 'Search serial no. or item...' });
@@ -251,25 +252,64 @@ async function renderStock(root) {
       if (u.issue_status === 'missing') groups.get(key).missing++;
       else groups.get(key).units.push(u);
     });
-    const tbody = el('tbody');
+    // One row per item; the rows are then sorted into the catalogue sections (Borewell, Openwell ...).
+    const entries = [];
     [...groups.values()].forEach(g => {
-      tbody.appendChild(el('tr', {}, [
-        el('td', {}, [String(g.description).split('\n')[0]]),
+      const name = String(g.description).split('\n')[0];
+      entries.push({ name, cells: [
         el('td', { style: 'text-align:center;font-weight:700' }, [String(g.units.length)]),
         el('td', { style: 'font-size:12px' }, [g.units.map(u => u.serial_no).join(', '), missingTag(g.missing)])
-      ]));
+      ] });
     });
     qtyRows.forEach(r => {
-      tbody.appendChild(el('tr', {}, [
-        el('td', {}, [String(r.description).split('\n')[0]]),
+      const name = String(r.description).split('\n')[0];
+      entries.push({ name, cells: [
         el('td', { style: 'text-align:center;font-weight:700' }, [String(Math.max(0, r.balance))]),
         el('td', { style: 'font-size:12px;color:#6b7280' }, ['No serial no.', missingTag(r.missing)])
-      ]));
+      ] });
+    });
+    const bySection = new Map();
+    entries.forEach(e => {
+      e.section = productSection(e.name);
+      e.sub = productSubheading(e.section, e.name);
+      if (!bySection.has(e.section)) bySection.set(e.section, []);
+      bySection.get(e.section).push(e);
+    });
+    const natural = (x, y) => String(x).localeCompare(String(y), undefined, { numeric: true });
+    const searching = !!searchInput.value.trim();
+    const tbody = el('tbody');
+    PRODUCT_SECTIONS.filter(sec => bySection.has(sec)).forEach(sec => {
+      const list = bySection.get(sec).sort((x, y) => natural(x.sub, y.sub) || natural(x.name, y.name));
+      const isOpen = searching || openStockSections.has(sec);
+      const qty = list.reduce((n, e) => n + (parseInt(e.cells[0].textContent, 10) || 0), 0);
+      tbody.appendChild(el('tr', { class: 'section-row', onclick: () => {
+        if (openStockSections.has(sec)) openStockSections.delete(sec); else openStockSections.add(sec);
+        load();
+      } }, [el('td', { colspan: '4' }, [
+        el('span', { class: 'sec-chev' }, [isOpen ? '▼' : '▶']), ' ', el('span', { class: 'sec-name' }, [sec]),
+        el('span', { class: 'sec-count' }, [`${qty} unit${qty === 1 ? '' : 's'} in stock`])
+      ])]));
+      if (!isOpen) return;
+      const manySubs = new Set(list.map(e => e.sub)).size > 1;
+      let lastSub = null;
+      list.forEach(e => {
+        if (manySubs && e.sub && e.sub !== lastSub) {
+          tbody.appendChild(el('tr', { class: 'sub-row' }, [el('td', { colspan: '4' }, [e.sub])]));
+          lastSub = e.sub;
+        }
+        const photo = productPhoto(e.name);
+        tbody.appendChild(el('tr', {}, [
+          el('td', { class: 'col-photo' }, photo ? [el('img', {
+            class: 'product-photo', src: photo, alt: '', title: 'Click to enlarge', onclick: () => showProductPhoto(photo, e.name)
+          })] : []),
+          el('td', {}, [e.name]), ...e.cells
+        ]));
+      });
     });
     const total = [...groups.values()].reduce((n, g) => n + g.units.length, 0) + qtyRows.reduce((n, r) => n + Math.max(0, r.balance), 0);
     card.appendChild(el('div', { style: 'font-size:12px;color:#6b7280;margin-bottom:8px' }, [`${total} unit(s) in stock`]));
-    card.appendChild(el('table', { class: 'data-table' }, [
-      el('thead', {}, [el('tr', {}, [el('th', {}, ['Item']), el('th', {}, ['Qty']), el('th', {}, ['Serial Nos'])])]),
+    card.appendChild(el('table', { class: 'data-table products-table' }, [
+      el('thead', {}, [el('tr', {}, [el('th', { class: 'col-photo' }, ['']), el('th', {}, ['Item']), el('th', {}, ['Qty']), el('th', {}, ['Serial Nos'])])]),
       tbody
     ]));
   }
