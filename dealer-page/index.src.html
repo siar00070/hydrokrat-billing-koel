@@ -53,7 +53,7 @@ input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); ou
 .sub-head { border-top: 1px solid var(--line); padding: 8px 14px 6px 46px; font: 600 12px var(--body); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); background: var(--surface); }
 .item-row { border-top: 1px solid var(--line); padding-block: 9px; }
 .has-photo { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.thumb { flex: none; width: 52px; height: 44px; display: flex; align-items: center; justify-content: center; padding: 0; background: none; border: 0; cursor: zoom-in; }
+.thumb { flex: none; width: 60px; height: 44px; display: flex; align-items: center; justify-content: center; padding: 0; background: none; border: 0; cursor: zoom-in; }
 .thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .sub-head { display: flex; align-items: center; gap: 10px; }
 .sub-head .thumb { width: 84px; height: 52px; }
@@ -213,7 +213,7 @@ const openGroups = new Set();
 const PHOTOS = /*PUMP_PHOTOS*/{};
 // Which photo a product family uses, from the family name. First match wins, so the specific names come first.
 const PHOTO_RULES = [
-  [/^V([3-9]) Borewell/i, m => 'v' + m[1]], [/^Mini HMPS/i, 'minihmps'], [/^HMPS/i, 'hmps'], [/^Ultra/i, 'ultra'],
+  [/^V([3-9]) Borewell/i, m => (m[1] === '3' || m[1] === '4') ? 'v' + m[1] : 'vrange'], [/^Mini HMPS/i, 'minihmps'], [/^HMPS/i, 'hmps'], [/^Ultra/i, 'ultra'],
   [/^VMPS/i, 'vmps'], [/^VSSP/i, 'vssp'], [/^VSCP/i, 'vscp'], [/^CMB Class B/i, 'cmbb'], [/^CMB/i, 'cmba'],
   [/^Ivory II/i, 'ivory2'], [/^Ivory Pro/i, 'ivorypro'], [/^Topaz/i, 'topaz'], [/^Super Gold/i, 'supergold'],
   [/^Emerald/i, 'emerald'], [/^Diamond/i, 'diamond'], [/^VMSJP/i, 'vmsjp'], [/^VMS\b/i, 'vms'], [/^VSWA/i, 'vswa'],
@@ -450,21 +450,16 @@ function render() {
       const manySubs = new Set(items.map(it => it.sub)).size > 1;
       let lastSub = null;
       items.forEach(it => {
-        // Also when a section has a single family, if that family has a photo to show.
-        if ((manySubs || (HEADED.has(g.name) && photoFor(it.family))) && it.sub !== lastSub) {
-          // One photo per size or family heading; the rows below it share that photo.
-          const sh = marked('div', 'sub-head', it.sub, q);
-          const ph = HEADED.has(g.name) ? thumb(it.family, it.sub) : null;
-          if (ph) sh.prepend(ph);
-          section.append(sh);
+        if (manySubs && it.sub !== lastSub) {
+          section.append(marked('div', 'sub-head', it.sub, q));
           lastSub = it.sub;
         }
         const row = make('div', 'item-row');
         const label = make('div');
         label.append(marked('div', 'model', it.model, q));
         if (it.desc) label.append(marked('div', 'desc', it.desc, q));
-        // Sections of single well-known models show a small photo beside each model.
-        const own = HEADED.has(g.name) ? null : thumb(it.family, it.model);
+        // A small photo to the left of each model (one photo per pump series).
+        const own = thumb(it.family, it.model);
         let cell = label;
         if (own) { cell = make('div', 'has-photo'); cell.append(own, label); }
         row.append(make('span'), cell, make('span', 'num qty', String(it.qty)), stepper(it));

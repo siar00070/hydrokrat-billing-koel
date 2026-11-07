@@ -14,7 +14,7 @@ from PIL import Image
 
 # photo name -> (catalogue page, index of the image on that page, as listed by page.get_images())
 PHOTOS = {
-    'v3': (29, 1), 'v4': (33, 0), 'v5': (41, 0), 'v6': (44, 0), 'v7': (40, 1), 'v8': (57, 0), 'v9': (68, 0),
+    'v3': (29, 1), 'v4': (33, 0), 'vrange': (6, 5),   # 5 inch to 9 inch: the catalogue's borewell range picture (single pumps are too thin to read)
     'hmps': (23, 2), 'minihmps': (23, 1), 'ultra': (14, 0), 'vmps': (26, 1),
     'vssp': (17, 0), 'vscp': (17, 1),
     'ivory2': (11, 2), 'topaz': (11, 0), 'supergold': (11, 1), 'emerald': (12, 0), 'vmb': (12, 2),
@@ -24,7 +24,7 @@ PHOTOS = {
     'cmba': (19, 1), 'cmbb': (21, 1), 'pipe': (73, 1),
     'panel': (86, 0),   # control panel, from the product portfolio on the last page
 }
-LAY_FLAT = {'v5', 'v6', 'v7', 'v8', 'v9', 'vmps'}
+LAY_FLAT = {'vmps'}
 MAX_SIDE = 300  # pixels on the longest side: sharp enough for a 130 px photo on a phone
 
 
