@@ -64,3 +64,28 @@ function productPhoto(description) {
   }
   return null;
 }
+
+// Stock list rows ({ description, qty, missing, ... }) sorted into the catalogue sections, for the Excel and PDF
+// downloads: [{ section, qty, missing, groups: [{ sub, rows }] }]. `sub` is '' when a section has only one heading.
+function groupStockRows(rows) {
+  const natural = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true });
+  const bySection = new Map();
+  rows.forEach(r => {
+    const section = productSection(r.description);
+    if (!bySection.has(section)) bySection.set(section, []);
+    bySection.get(section).push({ r, sub: productSubheading(section, r.description) });
+  });
+  return PRODUCT_SECTIONS.filter(s => bySection.has(s)).map(section => {
+    const items = bySection.get(section).sort((a, b) => natural(a.sub, b.sub) || natural(a.r.description, b.r.description));
+    const many = new Set(items.map(i => i.sub)).size > 1;
+    const groups = [];
+    items.forEach(({ r, sub }) => {
+      const key = many ? sub : '';
+      if (!groups.length || groups[groups.length - 1].sub !== key) groups.push({ sub: key, rows: [] });
+      groups[groups.length - 1].rows.push(r);
+    });
+    return { section, qty: items.reduce((n, i) => n + i.r.qty, 0), missing: items.reduce((n, i) => n + i.r.missing, 0), groups };
+  });
+}
+
+if (typeof module !== 'undefined' && module.exports) module.exports = { groupStockRows, productSection };

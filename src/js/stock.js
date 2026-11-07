@@ -60,13 +60,16 @@ function buildStockListHtml(rows) {
   const today = fmtDate(new Date().toISOString().slice(0, 10));
   const totalQty = rows.reduce((n, r) => n + r.qty, 0);
   const totalMissing = rows.reduce((n, r) => n + r.missing, 0);
-  const body = rows.map(r => `<tr>
+  const line = (r) => `<tr>
     <td>${esc(r.description)}</td>
     <td>${esc(r.hsn_sac)}</td>
     <td class="num">${r.qty}</td>
     <td class="num missing">${r.missing || ''}</td>
     <td class="serials">${r.no_serial ? '<span class="muted">No serial no.</span>' : esc(r.serials.join(', '))}</td>
-  </tr>`).join('');
+  </tr>`;
+  // Items grouped under the catalogue sections (Borewell, Openwell ...), with a heading per size where there are several.
+  const body = groupStockRows(rows).map(sec => `<tr class="sec"><td>${esc(sec.section)}</td><td></td><td class="num">${sec.qty}</td><td class="num missing">${sec.missing || ''}</td><td></td></tr>`
+    + sec.groups.map(g => (g.sub ? `<tr class="sub"><td colspan="5">${esc(g.sub)}</td></tr>` : '') + g.rows.map(line).join('')).join('')).join('');
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Stock List</title><style>
     @page { size: A4 landscape; margin: 12mm; }
     body { font-family: Arial, sans-serif; color: #1f2937; font-size: 11px; margin: 0; }
@@ -83,6 +86,8 @@ function buildStockListHtml(rows) {
     .missing { color: #c0392b; font-weight: 700; }
     .serials { font-size: 9.5px; }
     .muted { color: #6b7280; }
+    .sec td { background: #e2ece8; font-weight: 700; font-size: 12px; border-top: 6px solid #fff; page-break-after: avoid; }
+    .sub td { color: #1f7a5c; font-weight: 700; font-size: 10px; letter-spacing: .4px; text-transform: uppercase; padding-left: 16px; page-break-after: avoid; }
     .total td { font-weight: 700; border-top: 2px solid #0e3a5f; }
   </style></head><body>
     <div class="head">
