@@ -219,7 +219,8 @@ const PHOTO_RULES = [
   [/^Emerald/i, 'emerald'], [/^Diamond/i, 'diamond'], [/^VMSJP/i, 'vmsjp'], [/^VMS\b/i, 'vms'], [/^VSWA/i, 'vswa'],
   [/^VSW\b/i, 'vsw'], [/^Crystal/i, 'crystal'], [/^Pearl/i, 'pearl'], [/^Hira/i, 'hira'], [/^AdvantACE/i, 'advantace'],
   [/Pressure Booster Pumpset/i, 'boosterset'], [/Pressure Booster/i, 'boosterpump'], [/Circulation/i, 'vilc'],
-  [/Heavy Duty Self Priming/i, 'vmb'], [/Column Pipe/i, 'pipe']
+  [/Heavy Duty Self Priming/i, 'vmb'], [/Column Pipe/i, 'pipe'],
+  [/control panel/i, 'panel']   // the catalogue has no panel photo; shows once dealer-page/img/pumps/panel.webp exists
 ];
 function photoFor(family) {
   for (const [re, name] of PHOTO_RULES) {
@@ -450,7 +451,8 @@ function render() {
       const manySubs = new Set(items.map(it => it.sub)).size > 1;
       let lastSub = null;
       items.forEach(it => {
-        if (manySubs && it.sub !== lastSub) {
+        // Also when a section has a single family, if that family has a photo to show.
+        if ((manySubs || (HEADED.has(g.name) && photoFor(it.family))) && it.sub !== lastSub) {
           // One photo per size or family heading; the rows below it share that photo.
           const sh = marked('div', 'sub-head', it.sub, q);
           const ph = HEADED.has(g.name) ? thumb(it.family, it.sub) : null;
